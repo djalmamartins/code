@@ -28,10 +28,12 @@ return [
         $router->get("/blog", Blog::class . ":index", "web.blog");
         $router->get("/blog/categoria/{slug}", Blog::class . ":category", "web.blog.category");
         $router->get("/blog/{slug}", Blog::class . ":article", "web.blog.article");
+        $router->get("/pagina/{slug}", Web::class . ":page", "web.page");
         $router->get("/login", Auth::class . ":showLogin", "web.login");
         $router->post("/login", Auth::class . ":login", "web.login.submit");
+        $router->get("/login/2fa", Auth::class . ":showTwoFactor", "web.login.2fa");
+        $router->post("/login/2fa", Auth::class . ":verifyTwoFactor", "web.login.2fa.verify");
         $router->post("/logout", Auth::class . ":logout", "web.logout");
-        $router->get("/admin", Auth::class . ":admin", "web.admin");
         $router->get("/theme-assets/web/moves/v1/{directory}/{file}", ThemeAsset::class . ":show", "web.theme.asset");
     },
 ];

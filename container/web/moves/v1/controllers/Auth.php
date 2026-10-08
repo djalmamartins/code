@@ -70,6 +70,10 @@ class Auth extends Controller
                 $this->renderLogin('E-mail ou senha inválidos.', 401, $email);
                 return;
             }
+            if ($auth->hasPendingTwoFactor()) {
+                $this->redirect('login/2fa');
+                return;
+            }
             $destination = $auth->can('admin.access') ? 'admin' : '';
         } catch (Throwable) {
             $this->unavailable();
@@ -77,6 +81,33 @@ class Auth extends Controller
         }
 
         $this->redirect($destination);
+    }
+
+    /** Exibe a segunda etapa sem conceder acesso autenticado. */
+    public function showTwoFactor(): void
+    {
+        $auth = new AuthService($this->session);
+        if (!$auth->hasPendingTwoFactor()) {
+            $this->redirect('login');
+            return;
+        }
+        $this->renderTwoFactor();
+    }
+
+    /** Conclui login somente após validar TOTP ou recuperação de uso único. */
+    public function verifyTwoFactor(): void
+    {
+        $auth = new AuthService($this->session);
+        if (!$this->session->validateCsrf($this->postString('_token'))) {
+            $this->renderTwoFactor('A solicitação expirou. Atualize a página e tente novamente.', 403);
+            return;
+        }
+        $code = $this->postString('code');
+        if (strlen($code) > 64 || !$auth->completeTwoFactor($code)) {
+            $this->renderTwoFactor('Código inválido ou expirado.', 401);
+            return;
+        }
+        $this->redirect($auth->can('admin.access') ? 'admin' : '');
     }
 
     /** Encerra a sessão somente por POST com token CSRF válido. */
@@ -132,6 +163,18 @@ class Auth extends Controller
             'csrfToken' => $this->session->csrfToken(),
             'error' => $error,
             'email' => $email,
+        ]);
+    }
+
+    private function renderTwoFactor(string $error = '', int $status = 200): void
+    {
+        http_response_code($status);
+        header('Cache-Control: no-store');
+        header('Content-Type: text/html; charset=utf-8');
+        echo $this->view->render('pages/login-2fa', [
+            'head' => $this->head('Verificação em duas etapas — MOVES', 'Confirme sua identidade.', url('login/2fa')),
+            'csrfToken' => $this->session->csrfToken(),
+            'error' => $error,
         ]);
     }
 

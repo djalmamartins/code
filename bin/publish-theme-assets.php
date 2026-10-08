@@ -50,8 +50,9 @@ try {
     }
 
     $targetRoot = $publicRoot . "/assets";
-    $cssTarget = $targetRoot . "/moves.min.css";
-    $jsTarget = $targetRoot . "/moves.min.js";
+    $bundle = $type === "web" ? "moves" : "{$type}-{$name}";
+    $cssTarget = $targetRoot . "/{$bundle}.min.css";
+    $jsTarget = $targetRoot . "/{$bundle}.min.js";
 
     (new CSS($cssSource))->minify($cssTarget);
     (new JS($jsSource))->minify($jsTarget);
@@ -59,11 +60,13 @@ try {
     chmod($jsTarget, 0644);
 
     fwrite(STDOUT, sprintf(
-        "Theme %s/%s/%s: moves.min.css (%d bytes), moves.min.js (%d bytes).%s",
+        "Theme %s/%s/%s: %s.min.css (%d bytes), %s.min.js (%d bytes).%s",
         $type,
         $name,
         $version,
+        $bundle,
         filesize($cssTarget),
+        $bundle,
         filesize($jsTarget),
         PHP_EOL
     ));

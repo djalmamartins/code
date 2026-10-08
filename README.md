@@ -16,8 +16,9 @@ O certificado foi emitido por uma CA local do `mkcert`. A confiança é restrita
 
 O autoload PSR-4 está configurado assim:
 
-- `MovesCode\` → `src/`
-- `Moves\Modules\` → `modules/`
+- `Moves\` → `source/` para o código próprio da aplicação.
+- `container/` é carregado pelo classmap do Composer e contém os temas e seus controladores.
+- As classes `MovesCode\*` são fornecidas pelas bibliotecas MovesCode instaladas em `vendor/`; não são carregadas de uma pasta `src/` local.
 
 Para garantir o PHP compatível com o XAMPP:
 

@@ -13,6 +13,7 @@ use Moves\Boot\Database;
 use Moves\Core\Session;
 use Moves\Models\Auth;
 use Moves\Models\User;
+use Moves\Support\Totp;
 use MovesCode\Model\Connection;
 
 require dirname(__DIR__) . '/index.php';
@@ -22,6 +23,18 @@ function assertAuthTest(bool $condition, string $message): void
     if (!$condition) {
         throw new RuntimeException($message);
     }
+}
+
+function authTestTotpCode(string $secret, int $counter): string
+{
+    $alphabet = 'ABCDEFGHIJKLMNOPQRSTUVWXYZ234567'; $buffer = 0; $bits = 0; $key = '';
+    foreach (str_split($secret) as $char) {
+        $buffer = ($buffer << 5) | strpos($alphabet, $char); $bits += 5;
+        if ($bits >= 8) { $bits -= 8; $key .= chr(($buffer >> $bits) & 255); $buffer &= (1 << $bits) - 1; }
+    }
+    $hash = hash_hmac('sha1', pack('N2', intdiv($counter, 0x100000000), $counter % 0x100000000), $key, true);
+    $offset = ord($hash[19]) & 15; $number = unpack('N', substr($hash, $offset, 4))[1] & 0x7fffffff;
+    return str_pad((string) ($number % 1000000), 6, '0', STR_PAD_LEFT);
 }
 
 putenv('MOVES_DB_DSN=sqlite::memory:');
@@ -36,6 +49,10 @@ $pdo->exec("CREATE TABLE users (
     password VARCHAR(255) NOT NULL,
     status VARCHAR(16) NOT NULL DEFAULT 'active',
     role VARCHAR(16) NOT NULL DEFAULT 'user',
+    last_login_at DATETIME NULL,
+    totp_secret_encrypted VARCHAR(255) NULL,
+    totp_enabled_at DATETIME NULL,
+    last_totp_counter BIGINT NULL,
     created_at TEXT DEFAULT CURRENT_TIMESTAMP,
     updated_at TEXT DEFAULT CURRENT_TIMESTAMP
 )");
@@ -44,6 +61,20 @@ $pdo->exec('CREATE TABLE auth_attempts (
     identifier CHAR(64) NOT NULL,
     attempted_at DATETIME NOT NULL
 )');
+$pdo->exec('CREATE TABLE user_sessions (id INTEGER PRIMARY KEY AUTOINCREMENT, user_id INTEGER, session_hash CHAR(64) UNIQUE, device_label TEXT, created_at DATETIME, last_activity_at DATETIME, revoked_at DATETIME)');
+$pdo->exec('CREATE TABLE security_events (id INTEGER PRIMARY KEY AUTOINCREMENT, actor_user_id INTEGER NULL, subject_user_id INTEGER NULL, event_type TEXT, created_at DATETIME)');
+$pdo->exec('CREATE TABLE user_recovery_codes (id INTEGER PRIMARY KEY AUTOINCREMENT, user_id INTEGER, code_hash TEXT, used_at DATETIME NULL, created_at DATETIME DEFAULT CURRENT_TIMESTAMP)');
+
+$ephemeralKey = base64_encode(random_bytes(32));
+putenv('MOVES_2FA_ENCRYPTION_KEY=' . $ephemeralKey);
+$totp = new Totp();
+$secret = $totp->generateSecret();
+$encryptedSecret = $totp->encrypt($secret);
+assertAuthTest($totp->decrypt($encryptedSecret) === $secret, 'Encrypted TOTP secret did not round-trip.');
+$totpUser = new User();
+$totpUser->name = 'Conta TOTP'; $totpUser->email = 'totp@exemplo.com'; $totpUser->password = 'senha-segura-totp'; $totpUser->status = 'active';
+assertAuthTest($totpUser->save(), 'TOTP account fixture creation failed.');
+$pdo->prepare('UPDATE users SET totp_secret_encrypted = :secret, totp_enabled_at = :enabled WHERE id = :id')->execute(['secret' => $encryptedSecret, 'enabled' => gmdate('Y-m-d H:i:s'), 'id' => $totpUser->id]);
 
 session_name('moves_code_auth_test');
 session_save_path(sys_get_temp_dir());
@@ -82,14 +113,35 @@ assertAuthTest(!$auth->can('roles.manage'), 'A user received role-management per
 $pdo->prepare("UPDATE users SET role = 'admin' WHERE id = :id")->execute(['id' => $user->id]);
 assertAuthTest($auth->can('admin.access'), 'Admin profile was denied its explicit permission.');
 assertAuthTest(!$auth->can('roles.manage'), 'Admin profile received superadmin-only permission.');
+assertAuthTest($auth->can('pages.create') && $auth->can('pages.edit') && $auth->can('pages.publish'), 'Admin page permissions were not granted explicitly.');
+assertAuthTest(!$auth->can('pages.delete'), 'Admin received page-deletion permission.');
 $mutatedUser = $auth->user();
 $mutatedUser->role = 'superadmin';
 assertAuthTest($mutatedUser->save(), 'Existing user update failed.');
 assertAuthTest($mutatedUser->role === 'admin', 'User::save() allowed self-escalation to superadmin.');
 $pdo->prepare("UPDATE users SET role = 'superadmin' WHERE id = :id")->execute(['id' => $user->id]);
 assertAuthTest($auth->can('roles.manage'), 'Superadmin profile was denied explicit role-management permission.');
+assertAuthTest($auth->can('pages.delete'), 'Superadmin was denied page-deletion permission.');
 $pdo->prepare("UPDATE users SET role = 'unknown' WHERE id = :id")->execute(['id' => $user->id]);
 assertAuthTest(!$auth->can('admin.access'), 'Unknown roles were not denied by default.');
+
+$totpAuth = new Auth($session);
+assertAuthTest($totpAuth->login('totp@exemplo.com', 'senha-segura-totp'), 'Valid password did not start the 2FA pending state.');
+assertAuthTest($totpAuth->hasPendingTwoFactor() && $totpAuth->user() === null, 'Pending 2FA state granted an authenticated session.');
+$counter = intdiv(time(), 30);
+$code = authTestTotpCode($secret, $counter);
+assertAuthTest($totpAuth->completeTwoFactor($code), 'Valid TOTP did not complete authentication.');
+assertAuthTest($totpAuth->user()?->id == $totpUser->id, 'TOTP completion did not establish the authenticated user.');
+$totpAuth->logout();
+assertAuthTest($totpAuth->login('totp@exemplo.com', 'senha-segura-totp'), 'Second TOTP login did not reach its pending state.');
+assertAuthTest(!$totpAuth->completeTwoFactor($code), 'A previously accepted TOTP counter was replayed.');
+$recoveryHash = password_hash('AB12CD34', PASSWORD_DEFAULT);
+$pdo->prepare('INSERT INTO user_recovery_codes (user_id, code_hash) VALUES (:id, :hash)')->execute(['id' => $totpUser->id, 'hash' => $recoveryHash]);
+assertAuthTest($totpAuth->completeTwoFactor('AB12CD34'), 'Unused recovery code was rejected.');
+$totpAuth->logout();
+assertAuthTest($totpAuth->login('totp@exemplo.com', 'senha-segura-totp'), 'Recovery-code replay test did not reach pending state.');
+assertAuthTest(!$totpAuth->completeTwoFactor('AB12CD34'), 'A recovery code was accepted more than once.');
+$totpAuth->logout();
 assertAuthTest($session->validateCsrf($session->csrfToken()), 'Valid CSRF token was rejected.');
 assertAuthTest(!$session->validateCsrf('invalid-token'), 'Invalid CSRF token was accepted.');
 $auth->logout();

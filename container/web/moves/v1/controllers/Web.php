@@ -12,8 +12,11 @@
 namespace Moves\Themes\Web\MovesV1\Controllers;
 
 use Moves\Core\Controller;
+use Moves\Models\Page;
+use Moves\Support\HtmlSanitizer;
 use MovesCode\Router\Router;
 use MovesCode\View\Extension\Asset;
+use Throwable;
 
 class Web extends Controller
 {
@@ -61,8 +64,46 @@ class Web extends Controller
         $this->render("pages/contato", "Contato — MOVES", "Conte seu projeto para a Moves e prepare sua solicitação de proposta.", url("contato"));
     }
 
+    /** Renderiza uma página publicada, sanitizando novamente o conteúdo persistido. */
+    public function page(array $route): void
+    {
+        $slug = is_string($route['slug'] ?? null) ? $route['slug'] : '';
+        if (preg_match('/^[a-z0-9]+(?:-[a-z0-9]+)*$/', $slug) !== 1) {
+            $this->publicPageNotFound();
+            return;
+        }
+
+        try {
+            $page = (new Page())->findPublishedBySlug($slug, gmdate('Y-m-d H:i:s'));
+            if ($page === null) {
+                $this->publicPageNotFound();
+                return;
+            }
+            $page['content'] = (new HtmlSanitizer())->purify((string) $page['content']);
+            $description = mb_substr(trim(strip_tags($page['content'])), 0, 160, 'UTF-8');
+            $this->render(
+                'pages/page',
+                (string) $page['title'] . ' — MOVES',
+                $description !== '' ? $description : 'Conteúdo institucional da Moves.',
+                url('pagina/' . rawurlencode($slug)),
+                ['page' => $page]
+            );
+        } catch (Throwable) {
+            http_response_code(503);
+            header('Cache-Control: no-store');
+            header('Content-Type: text/plain; charset=utf-8');
+            echo 'Conteúdo temporariamente indisponível';
+        }
+    }
+
     /** Renderiza uma página usando o layout e o SEO compartilhados. */
-    private function render(string $template, string $title, string $description, string $canonical): void
+    private function publicPageNotFound(): void
+    {
+        http_response_code(404);
+        $this->render('pages/page', 'Página não encontrada — MOVES', 'A página solicitada não está disponível.', url(), ['page' => null]);
+    }
+
+    private function render(string $template, string $title, string $description, string $canonical, array $data = []): void
     {
         $head = $this->seo
             ->openGraph(APP_NAME, "pt_BR", "website")
@@ -71,6 +112,6 @@ class Web extends Controller
             ->render();
 
         header("Content-Type: text/html; charset=utf-8");
-        echo $this->view->render($template, ["head" => $head]);
+        echo $this->view->render($template, ["head" => $head] + $data);
     }
 }

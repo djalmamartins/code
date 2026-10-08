@@ -58,8 +58,10 @@ try {
 
 try {
     $theme = ThemeLoader::load("web");
+    $cmsTheme = ThemeLoader::load("cms");
     $router = new Router(url());
     $theme["routes"]($router);
+    $cmsTheme["routes"]($router);
 } catch (Throwable $exception) {
     $details = APP_DEBUG ? ' ' . get_class($exception) . ' at ' . basename($exception->getFile()) . ':' . $exception->getLine() : '';
     error_log('Moves Code request failed.' . $details);

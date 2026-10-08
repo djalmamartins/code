@@ -11,8 +11,8 @@
 
 namespace Moves\Models;
 
-use MovesCode\Model\Model;
 use MovesCode\Model\Connection;
+use MovesCode\Model\Model;
 
 class User extends Model
 {
@@ -39,6 +39,39 @@ class User extends Model
         $result = $this->find('LOWER(email) = :email', ['email' => $email])->fetch();
 
         return $result instanceof self ? $result : null;
+    }
+
+    /**
+     * Busca usuários com limite e deslocamento para listagens administrativas.
+     *
+     * @return list<self>
+     */
+    public function searchPage(string $search, int $limit, int $offset): array
+    {
+        $search = mb_strtolower(trim($search), 'UTF-8');
+        $query = $this->find();
+        if ($search !== '') {
+            $query = $this->find(
+                'LOWER(name) LIKE :name_search OR LOWER(email) LIKE :email_search',
+                ['name_search' => '%' . $search . '%', 'email_search' => '%' . $search . '%']
+            );
+        }
+
+        return $query->order('name ASC')->limit($limit)->offset($offset)->fetch(true) ?: [];
+    }
+
+    /** Conta os resultados da pesquisa sem carregar a listagem inteira. */
+    public function countSearch(string $search): int
+    {
+        $search = mb_strtolower(trim($search), 'UTF-8');
+        if ($search === '') {
+            return $this->find()->count();
+        }
+
+        return $this->find(
+            'LOWER(name) LIKE :name_search OR LOWER(email) LIKE :email_search',
+            ['name_search' => '%' . $search . '%', 'email_search' => '%' . $search . '%']
+        )->count();
     }
 
     /**
