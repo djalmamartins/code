@@ -13,6 +13,7 @@ namespace Moves\Support;
 
 use MovesCode\Model\Message;
 use PHPMailer\PHPMailer\PHPMailer;
+use InvalidArgumentException;
 use Throwable;
 
 class Email
@@ -22,6 +23,8 @@ class Email
     private PHPMailer $mail;
 
     private Message $message;
+
+    private ?string $textBody = null;
 
     /**
      * Inicializa a mensagem com uma instância configurável do PHPMailer.
@@ -57,6 +60,16 @@ class Email
     }
 
     /**
+     * Define a alternativa em texto simples da mensagem HTML.
+     */
+    public function textBody(?string $textBody): self
+    {
+        $this->textBody = $textBody;
+
+        return $this;
+    }
+
+    /**
      * Envia a mensagem utilizando a configuração aplicada ao PHPMailer.
      */
     public function send(string $from, string $fromName): bool
@@ -66,31 +79,120 @@ class Email
             return false;
         }
 
-        if (!PHPMailer::validateAddress($this->data->recipientEmail)) {
-            $this->message->warning("O e-mail de destinatário não é válido");
-            return false;
+        $attachments = [];
+        foreach ($this->data->attachments ?? [] as $path => $name) {
+            $attachments[] = ['path' => $path, 'name' => $name];
         }
 
-        if (!PHPMailer::validateAddress($from)) {
-            $this->message->warning("O e-mail de remetente não é válido");
-            return false;
+        return $this->sendEmail(
+            $this->data->recipientEmail,
+            $this->data->subject,
+            $this->data->body,
+            $from,
+            $this->textBody,
+            $fromName,
+            $attachments,
+            $this->data->recipientName ?? ''
+        )['success'];
+    }
+
+    /**
+     * Prepara e envia e-mail HTML com alternativa em texto e anexos opcionais.
+     *
+     * Cada anexo deve ser um caminho ou um array com `path` e `name` opcionais.
+     * Erros internos do transporte nunca são devolvidos ao chamador.
+     *
+     * @param list<string|array{path: string, name?: string}> $attachments
+     * @return array{success: bool, message: string}
+     */
+    public function sendEmail(
+        string $recipient,
+        string $subject,
+        string $htmlBody,
+        string $from,
+        ?string $textBody = null,
+        ?string $fromName = null,
+        array $attachments = [],
+        string $recipientName = ''
+    ): array {
+        if (!PHPMailer::validateAddress($recipient)
+            || !PHPMailer::validateAddress($from)
+            || trim($subject) === ''
+            || trim($htmlBody) === ''
+            || $this->hasHeaderBreak($subject)
+            || $this->hasHeaderBreak($fromName ?? '')
+            || $this->hasHeaderBreak($recipientName)
+        ) {
+            return $this->failure('Dados de e-mail inválidos.');
         }
+
+        $fromName = $fromName ?? (defined('APP_NAME') ? APP_NAME : 'Moves');
 
         try {
-            $this->mail->Subject = $this->data->subject;
-            $this->mail->msgHTML($this->data->body);
-            $this->mail->addAddress($this->data->recipientEmail, $this->data->recipientName);
+            // PHPMailer objects can be reused; clear recipient-specific state to avoid cross-send leakage.
+            $this->mail->clearAllRecipients();
+            $this->mail->clearAttachments();
+            $this->mail->CharSet = PHPMailer::CHARSET_UTF8;
+            $this->mail->SMTPDebug = 0;
+            $this->mail->Subject = $subject;
+            $this->mail->msgHTML($htmlBody);
+            if ($textBody !== null) {
+                $this->mail->AltBody = $textBody;
+            }
             $this->mail->setFrom($from, $fromName);
+            $this->mail->addAddress($recipient, $recipientName);
 
-            foreach ($this->data->attachments ?? [] as $path => $name) {
+            foreach ($attachments as $attachment) {
+                if (is_string($attachment)) {
+                    $path = $attachment;
+                    $name = basename($path);
+                } elseif (is_array($attachment)
+                    && is_string($attachment['path'] ?? null)
+                    && (!isset($attachment['name']) || is_string($attachment['name']))
+                ) {
+                    $path = $attachment['path'];
+                    $name = $attachment['name'] ?? basename($path);
+                } else {
+                    throw new InvalidArgumentException('Invalid attachment.');
+                }
+
+                if ($this->hasHeaderBreak($name) || !is_file($path) || !is_readable($path)) {
+                    throw new InvalidArgumentException('Invalid attachment.');
+                }
+
                 $this->mail->addAttachment($path, $name);
             }
 
-            return $this->mail->send();
+            if (!$this->mail->send()) {
+                return $this->failure('Não foi possível enviar o e-mail.');
+            }
+
+            $this->message->success('E-mail enviado com sucesso.');
+
+            return ['success' => true, 'message' => 'E-mail enviado com sucesso.'];
         } catch (Throwable) {
-            $this->message->error("Não foi possível enviar o e-mail");
-            return false;
+            return $this->failure('Não foi possível enviar o e-mail.');
         }
+    }
+
+    /**
+     * Detecta quebras de linha que poderiam injetar cabeçalhos.
+     */
+    private function hasHeaderBreak(string $value): bool
+    {
+        return preg_match('/[\r\n]/', $value) === 1;
+    }
+
+    /**
+     * Cria uma falha genérica sem expor detalhes do PHPMailer.
+     *
+     * @return array{success: false, message: string}
+     */
+    private function failure(string $message): array
+    {
+        $this->message->error($message);
+
+        return ['success' => false, 'message' => $message];
     }
 
     /**
