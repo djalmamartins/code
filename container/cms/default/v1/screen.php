@@ -14,6 +14,7 @@ $isSelf = $view === 'self-profile';
 $record = is_array($record) ? $record : [];
 $permissions = is_array($permissions ?? null) ? $permissions : [];
 $canManagePages = (bool) ($permissions['edit'] ?? false);
+$canManageArticles = (bool) ($permissions['edit'] ?? false);
 $name = $record['name'] ?? $actor['name'] ?? 'Usuário';
 $email = $record['email'] ?? $actor['email'] ?? '';
 $roleName = ['superadmin' => 'Superadmin', 'admin' => 'Administrador', 'user' => 'Usuário'][(string) ($record['role'] ?? $actor['role'] ?? '')] ?? 'Usuário';
@@ -37,7 +38,15 @@ $navigation = [
     ],
 ];
 $currentPath = (string) ($currentPath ?? '/admin');
-$pageTitle = $view === 'dashboard' ? 'Dashboard' : ($view === 'placeholder' ? (string) ($pageTitle ?? 'Módulo') : (in_array($view, ['pages', 'page-form'], true) ? 'Páginas' : ($view === 'editor-demo' ? 'Editor de conteúdo' : ($view === 'users' ? 'Usuários' : ($isSelf ? 'Meu perfil' : 'Gestão de usuários')))));
+$pageTitle = match ($view) {
+    'dashboard' => 'Dashboard',
+    'placeholder' => (string) ($pageTitle ?? 'Módulo'),
+    'pages', 'page-form' => 'Páginas',
+    'articles', 'article-form', 'article-categories' => 'Artigos',
+    'editor-demo' => 'Editor de conteúdo',
+    'users' => 'Usuários',
+    default => $isSelf ? 'Meu perfil' : 'Gestão de usuários',
+};
 
 ?>
 <!doctype html>
@@ -49,7 +58,7 @@ $pageTitle = $view === 'dashboard' ? 'Dashboard' : ($view === 'placeholder' ? (s
     <link rel="icon" href="<?= $e(url('theme-assets/web/moves/v1/images/favicon.png')) ?>" type="image/png">
     <link rel="preconnect" href="https://fonts.googleapis.com"><link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
     <link href="https://fonts.googleapis.com/css2?family=Manrope:wght@400;500;600;700;800&amp;display=swap" rel="stylesheet">
-            <?php if (in_array($view, ['editor-demo', 'page-form'], true)): ?><link rel="stylesheet" href="<?= $e(url('cms-assets/icons/css/moves-icons.css?v=1.0.0')) ?>"><link rel="stylesheet" href="<?= $e(url('cms-assets/wysiwyg/css/app.css?v=1.0.0')) ?>"><?php else: ?><link rel="stylesheet" href="<?= $e(url('cms-assets/icons/css/moves-icons.css?v=1.0.0')) ?>"><?php endif; ?>
+            <?php if (in_array($view, ['editor-demo', 'page-form', 'article-form'], true)): ?><link rel="stylesheet" href="<?= $e(url('cms-assets/icons/css/moves-icons.css?v=1.0.0')) ?>"><link rel="stylesheet" href="<?= $e(url('cms-assets/wysiwyg/css/app.css?v=1.0.0')) ?>"><?php else: ?><link rel="stylesheet" href="<?= $e(url('cms-assets/icons/css/moves-icons.css?v=1.0.0')) ?>"><?php endif; ?>
     <link rel="stylesheet" href="<?= $e(url('assets/cms-default.min.css?v=20261008-code024')) ?>">
 </head>
 <body>
@@ -58,7 +67,7 @@ $pageTitle = $view === 'dashboard' ? 'Dashboard' : ($view === 'placeholder' ? (s
         <div class="sidebar-brand-row"><a class="brand" href="<?= $e(url('admin')) ?>"><img src="<?= $e(url('theme-assets/web/moves/v1/images/moves-logo.svg')) ?>" alt="Moves"></a><button class="sidebar-toggle" type="button" aria-label="Recolher menu" aria-expanded="true" aria-controls="cms-sidebar">‹</button></div>
         <span class="side-label">ESPAÇO DE TRABALHO</span>
         <nav aria-label="Navegação principal">
-            <?php foreach ($navigation as $group => $items): ?><section class="nav-group"><span class="nav-group-title"><?= $e($group) ?></span><?php foreach ($items as [$path, $label, $icon]): ?><?php if (($path !== '/admin/users' || $canManageUsers) && ($path !== '/admin/pages' || $canManagePages)): ?><a class="nav-link <?= $currentPath === $path || ($path === '/admin/users' && str_starts_with($currentPath, '/admin/users/')) || ($path === '/admin/pages' && str_starts_with($currentPath, '/admin/pages/')) ? 'active' : '' ?>" href="<?= $e(url(ltrim($path, '/'))) ?>" <?= $currentPath === $path ? 'aria-current="page"' : '' ?>><span class="icon-<?= $e($icon) ?>" aria-hidden="true"></span><?= $e($label) ?></a><?php endif; ?><?php endforeach; ?></section><?php endforeach; ?>
+            <?php foreach ($navigation as $group => $items): ?><section class="nav-group"><span class="nav-group-title"><?= $e($group) ?></span><?php foreach ($items as [$path, $label, $icon]): ?><?php if (($path !== '/admin/users' || $canManageUsers) && ($path !== '/admin/pages' || $canManagePages) && ($path !== '/admin/blog' || $canManageArticles)): ?><a class="nav-link <?= $currentPath === $path || ($path === '/admin/users' && str_starts_with($currentPath, '/admin/users/')) || ($path === '/admin/pages' && str_starts_with($currentPath, '/admin/pages/')) || ($path === '/admin/blog' && str_starts_with($currentPath, '/admin/blog')) ? 'active' : '' ?>" href="<?= $e(url(ltrim($path, '/'))) ?>" <?= $currentPath === $path ? 'aria-current="page"' : '' ?>><span class="icon-<?= $e($icon) ?>" aria-hidden="true"></span><?= $e($label) ?></a><?php endif; ?><?php endforeach; ?></section><?php endforeach; ?>
             <?php if ($isSelf): ?><a class="nav-link active" href="<?= $e(url('profile')) ?>" aria-current="page"><span>◎</span> Meu perfil</a><?php endif; ?>
         </nav>
         <div class="sidebar-footer"><a class="site-link" href="<?= $e(url()) ?>"><span aria-hidden="true">↗</span>&nbsp; Visualizar site</a><form class="sidebar-logout" action="<?= $e(url('logout')) ?>" method="post"><input type="hidden" name="_token" value="<?= $e($csrf) ?>"><button class="site-link" type="submit"><span aria-hidden="true">↪</span>&nbsp; Sair</button></form><div class="sidebar-bottom"><span class="online-dot"></span> Ambiente protegido</div></div>
@@ -102,6 +111,38 @@ $pageTitle = $view === 'dashboard' ? 'Dashboard' : ($view === 'placeholder' ? (s
                     <?php if (($record['status'] ?? '') === 'published'): ?><a class="button secondary" href="<?= $e(url('pagina/' . rawurlencode($record['slug']))) ?>" target="_blank" rel="noopener noreferrer">Visualizar página</a><?php endif; ?>
                     <?php if ($permissions['delete'] ?? false): ?><form method="post" action="<?= $e(url('admin/pages/' . $record['id'] . '/delete')) ?>" data-confirm="Excluir esta página permanentemente?"><input type="hidden" name="_token" value="<?= $e($csrf) ?>"><button class="button danger" type="submit">Excluir página</button></form><?php endif; ?>
                 </div><?php endif; ?>
+            <?php elseif ($view === 'articles'): ?>
+                <div class="page-heading"><div><p class="eyebrow">CONTEÚDO</p><h1>Artigos</h1><p>Crie, revise e publique conteúdo para o blog.</p></div><div class="page-actions"><a class="button secondary" href="<?= $e(url('admin/blog/categories')) ?>">Categorias</a><?php if ($permissions['create'] ?? false): ?><a class="button primary" href="<?= $e(url('admin/blog/new')) ?>">＋ Novo artigo</a><?php endif; ?></div></div>
+                <section class="card table-card"><form class="search-form" action="<?= $e(url('admin/blog')) ?>" method="get"><label class="searchbox"><span>⌕</span><input name="q" value="<?= $e($search ?? '') ?>" placeholder="Buscar por título ou slug" aria-label="Buscar artigos"></label><button class="button secondary" type="submit">Buscar</button></form>
+                    <div class="table-wrap"><table><thead><tr><th>Artigo</th><th>Categoria</th><th>Autor</th><th>Status</th><th>Publicação</th><th>Ações</th></tr></thead><tbody>
+                    <?php foreach (($articles ?? []) as $item): ?><tr><td><strong><?= $e($item['title']) ?></strong><small class="table-subtitle">/blog/<?= $e($item['slug']) ?></small></td><td><?= $e($item['category_name']) ?></td><td><?= $e($item['author_name']) ?></td><td><span class="status <?= $item['status'] === 'published' ? 'enabled' : 'disabled' ?>"><i></i><?= $item['status'] === 'published' ? 'Publicado' : 'Rascunho' ?></span></td><td><?= $e($item['published_at'] ?? '—') ?></td><td class="page-actions">
+                        <?php if ($permissions['edit'] ?? false): ?><a class="row-action" href="<?= $e(url('admin/blog/' . $item['id'] . '/edit')) ?>" aria-label="Editar artigo">✎</a><?php endif; ?>
+                        <?php if ($permissions['publish'] ?? false): ?><form method="post" action="<?= $e(url('admin/blog/' . $item['id'] . ($item['status'] === 'published' ? '/unpublish' : '/publish'))) ?>"><input type="hidden" name="_token" value="<?= $e($csrf) ?>"><button class="button secondary small" type="submit"><?= $item['status'] === 'published' ? 'Retirar' : 'Publicar' ?></button></form><?php endif; ?>
+                        <?php if ($permissions['delete'] ?? false): ?><form method="post" action="<?= $e(url('admin/blog/' . $item['id'] . '/delete')) ?>" data-confirm="Excluir este artigo permanentemente?"><input type="hidden" name="_token" value="<?= $e($csrf) ?>"><button class="button danger small" type="submit">Excluir</button></form><?php endif; ?>
+                    </td></tr><?php endforeach; ?>
+                    <?php if (($articles ?? []) === []): ?><tr><td colspan="6" class="empty">Nenhum artigo cadastrado.</td></tr><?php endif; ?>
+                    </tbody></table></div><div class="table-footer"><span><?= count($articles ?? []) ?> artigo(s) nesta lista</span><?= $pagination ?? '' ?></div>
+                </section>
+            <?php elseif ($view === 'article-form'): ?>
+                <?php $editing = (bool) ($editing ?? false); $articleStatus = ($record['status'] ?? 'draft') === 'published' ? 'Publicado' : 'Rascunho'; ?>
+                <div class="page-heading"><div><p class="eyebrow">BLOG</p><h1><?= $editing ? 'Editar artigo' : 'Novo artigo' ?></h1><p>O HTML é sanitizado no servidor antes de ser salvo.</p></div><a class="button secondary" href="<?= $e(url('admin/blog')) ?>">Voltar</a></div>
+                <?php if ($editing): ?><p class="page-status-line">Status: <strong><?= $e($articleStatus) ?></strong><?php if (!empty($record['published_at'])): ?> · Publicado em <?= $e($record['published_at']) ?><?php endif; ?></p><?php endif; ?>
+                <?php if (($categories ?? []) === []): ?><div class="notice notice-error">Cadastre ao menos uma categoria antes de criar artigos. <a href="<?= $e(url('admin/blog/categories')) ?>">Gerenciar categorias</a></div><?php endif; ?>
+                <form class="card form-card page-form" method="post" action="<?= $e(url($formAction)) ?>" data-moves-article-editor><input type="hidden" name="_token" value="<?= $e($csrf) ?>"><div class="form-grid">
+                    <label class="form-wide">Título<input name="title" value="<?= $e($record['title'] ?? '') ?>" maxlength="200" required></label>
+                    <label class="form-wide">Slug<input name="slug" value="<?= $e($record['slug'] ?? '') ?>" maxlength="200" pattern="[a-z0-9]+(-[a-z0-9]+)*" required><small>URL pública: <?= $e(url('blog/')) ?><span data-article-slug-preview><?= $e($record['slug'] ?? 'slug-do-artigo') ?></span></small></label>
+                    <label class="form-wide">Resumo<textarea name="excerpt" rows="3" maxlength="500" required><?= $e($record['excerpt'] ?? '') ?></textarea><small>Até 500 caracteres; exibido na lista e nos mecanismos de busca.</small></label>
+                    <label>Categoria<select name="category_id" required><option value="">Selecione</option><?php foreach (($categories ?? []) as $categoryOption): ?><option value="<?= $e($categoryOption['id']) ?>" <?= (string) ($record['category_id'] ?? '') === (string) $categoryOption['id'] ? 'selected' : '' ?>><?= $e($categoryOption['name']) ?></option><?php endforeach; ?></select></label>
+                    <label class="form-wide">Imagem de capa (URL HTTPS opcional)<input type="url" name="cover_image" value="<?= $e($record['cover_image'] ?? '') ?>" maxlength="500" placeholder="https://..."><small>Upload e imagens incorporadas estão desativados nesta etapa.</small></label>
+                    <div class="form-wide"><label for="moves-article-editor">Conteúdo</label><div class="moves-editor-host" id="moves-article-editor"></div><textarea class="page-content-source" name="content" id="article-content" rows="10" maxlength="1000000" aria-describedby="article-content-help"><?= $e($record['content'] ?? '') ?></textarea><small id="article-content-help">Apenas HTML editorial seguro será armazenado; imagens, uploads e modo HTML estão desativados.</small></div>
+                </div><div class="form-actions"><button class="button primary" type="submit" <?= ($categories ?? []) === [] ? 'disabled' : '' ?>><?= $editing ? 'Salvar alterações' : 'Salvar rascunho' ?></button></div></form>
+                <?php if ($editing): ?><div class="page-secondary-actions"><?php if ($permissions['publish'] ?? false): ?><form method="post" action="<?= $e(url('admin/blog/' . $record['id'] . (($record['status'] ?? '') === 'published' ? '/unpublish' : '/publish'))) ?>"><input type="hidden" name="_token" value="<?= $e($csrf) ?>"><button class="button secondary" type="submit"><?= ($record['status'] ?? '') === 'published' ? 'Retirar do blog' : 'Publicar agora' ?></button></form><?php endif; ?><?php if (($record['status'] ?? '') === 'published'): ?><a class="button secondary" href="<?= $e(url('blog/' . rawurlencode($record['slug']))) ?>" target="_blank" rel="noopener noreferrer">Visualizar artigo</a><?php endif; ?><?php if ($permissions['delete'] ?? false): ?><form method="post" action="<?= $e(url('admin/blog/' . $record['id'] . '/delete')) ?>" data-confirm="Excluir este artigo permanentemente?"><input type="hidden" name="_token" value="<?= $e($csrf) ?>"><button class="button danger" type="submit">Excluir artigo</button></form><?php endif; ?></div><?php endif; ?>
+            <?php elseif ($view === 'article-categories'): ?>
+                <?php $editing = (bool) ($editing ?? false); ?>
+                <div class="page-heading"><div><p class="eyebrow">BLOG</p><h1>Categorias</h1><p>Organize os artigos e suas páginas públicas.</p></div><a class="button secondary" href="<?= $e(url('admin/blog')) ?>">Voltar aos artigos</a></div>
+                <div class="form-grid category-admin-grid"><form class="card form-card" method="post" action="<?= $e(url($editing ? 'admin/blog/categories/' . (int) $record['id'] : 'admin/blog/categories')) ?>"><input type="hidden" name="_token" value="<?= $e($csrf) ?>"><div class="card-title"><div><h2><?= $editing ? 'Editar categoria' : 'Nova categoria' ?></h2></div></div><label>Nome<input name="name" value="<?= $e($record['name'] ?? '') ?>" maxlength="120" required></label><label>Slug<input name="slug" value="<?= $e($record['slug'] ?? '') ?>" maxlength="140" required></label><label>Descrição opcional<textarea name="description" rows="4" maxlength="500"><?= $e($record['description'] ?? '') ?></textarea></label><div class="form-actions"><button class="button primary" type="submit"><?= $editing ? 'Salvar categoria' : 'Criar categoria' ?></button><?php if ($editing): ?><a class="button secondary" href="<?= $e(url('admin/blog/categories')) ?>">Cancelar</a><?php endif; ?></div></form>
+                    <section class="card table-card"><div class="card-title"><div><h2>Categorias cadastradas</h2><p><?= count($categories ?? []) ?> categoria(s)</p></div></div><div class="table-wrap"><table><thead><tr><th>Categoria</th><th>Slug</th><th>Ações</th></tr></thead><tbody><?php foreach (($categories ?? []) as $categoryItem): ?><tr><td><strong><?= $e($categoryItem['name']) ?></strong><small class="table-subtitle"><?= $e($categoryItem['description'] ?? '') ?></small></td><td><?= $e($categoryItem['slug']) ?></td><td class="page-actions"><a class="row-action" href="<?= $e(url('admin/blog/categories/' . $categoryItem['id'] . '/edit')) ?>" aria-label="Editar categoria">✎</a><form method="post" action="<?= $e(url('admin/blog/categories/' . $categoryItem['id'] . '/delete')) ?>" data-confirm="Remover esta categoria? Categorias com artigos não podem ser removidas."><input type="hidden" name="_token" value="<?= $e($csrf) ?>"><button class="button danger small" type="submit">Excluir</button></form></td></tr><?php endforeach; ?><?php if (($categories ?? []) === []): ?><tr><td colspan="3" class="empty">Nenhuma categoria cadastrada.</td></tr><?php endif; ?></tbody></table></div></section>
+                </div>
             <?php elseif ($view === 'editor-demo'): ?>
                 <div class="page-heading"><div><p class="eyebrow">CONTEÚDO</p><h1>Editor de conteúdo</h1><p>Demonstração local do Moves Editor 1.0.0, sem salvar conteúdo.</p></div></div>
                 <div class="notice notice-info" role="note">Esta demonstração não envia nem persiste conteúdo. O módulo Páginas sanitiza o conteúdo no servidor; uploads e imagens continuam desativados até a integração segura com o armazenamento.</div>
@@ -138,6 +179,6 @@ $pageTitle = $view === 'dashboard' ? 'Dashboard' : ($view === 'placeholder' ? (s
         </section>
     </main>
 </div>
-<?php if (in_array($view, ['editor-demo', 'page-form'], true)): ?><script src="<?= $e(url('cms-assets/wysiwyg/js/app.js?v=1.0.0')) ?>" defer></script><?php endif; ?>
+<?php if (in_array($view, ['editor-demo', 'page-form', 'article-form'], true)): ?><script src="<?= $e(url('cms-assets/wysiwyg/js/app.js?v=1.0.0')) ?>" defer></script><?php endif; ?>
 <script src="<?= $e(url('assets/cms-default.min.js?v=20261008-code024')) ?>" defer></script>
 </body></html>

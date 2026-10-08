@@ -11,6 +11,7 @@
 
 use Moves\Themes\Cms\DefaultV1\Controllers\Users;
 use Moves\Themes\Cms\DefaultV1\Controllers\Pages;
+use Moves\Themes\Cms\DefaultV1\Controllers\Articles;
 use Moves\Themes\Cms\DefaultV1\Controllers\Assets;
 use MovesCode\Router\Router;
 
@@ -34,7 +35,19 @@ return [
         $router->post('/admin/pages/{id}/publish', Pages::class . ':publish', 'cms.pages.publish');
         $router->post('/admin/pages/{id}/unpublish', Pages::class . ':unpublish', 'cms.pages.unpublish');
         $router->post('/admin/pages/{id}/delete', Pages::class . ':delete', 'cms.pages.delete');
-        $router->get('/admin/blog', Users::class . ':placeholder', 'cms.blog');
+        $router->get('/admin/blog', Articles::class . ':index', 'cms.articles.index');
+        $router->get('/admin/blog/new', Articles::class . ':createForm', 'cms.articles.create');
+        $router->post('/admin/blog', Articles::class . ':create', 'cms.articles.store');
+        $router->get('/admin/blog/categories', Articles::class . ':categories', 'cms.articles.categories');
+        $router->post('/admin/blog/categories', Articles::class . ':saveCategory', 'cms.articles.categories.store');
+        $router->get('/admin/blog/categories/{id}/edit', Articles::class . ':editCategoryForm', 'cms.articles.categories.edit');
+        $router->post('/admin/blog/categories/{id}', Articles::class . ':saveCategory', 'cms.articles.categories.update');
+        $router->post('/admin/blog/categories/{id}/delete', Articles::class . ':deleteCategory', 'cms.articles.categories.delete');
+        $router->get('/admin/blog/{id}/edit', Articles::class . ':editForm', 'cms.articles.edit');
+        $router->post('/admin/blog/{id}', Articles::class . ':update', 'cms.articles.update');
+        $router->post('/admin/blog/{id}/publish', Articles::class . ':publish', 'cms.articles.publish');
+        $router->post('/admin/blog/{id}/unpublish', Articles::class . ':unpublish', 'cms.articles.unpublish');
+        $router->post('/admin/blog/{id}/delete', Articles::class . ':delete', 'cms.articles.delete');
         $router->get('/admin/media', Users::class . ':placeholder', 'cms.media');
         $router->get('/admin/slides', Users::class . ':placeholder', 'cms.slides');
         $router->get('/admin/testimonials', Users::class . ':placeholder', 'cms.testimonials');

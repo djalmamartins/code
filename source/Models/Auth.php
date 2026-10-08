@@ -24,8 +24,8 @@ class Auth
     private const PASSWORD_OPTIONS = ['cost' => 12];
     private const DUMMY_HASH = '$2y$12$Sbie8wlhNn.JF8LF0Y2ySOpHbaRh8VXZQuYE2ohvtibhJLxNHBjHG';
     private const ROLE_PERMISSIONS = [
-        'superadmin' => ['admin.access', 'users.manage', 'roles.manage', 'pages.create', 'pages.edit', 'pages.publish', 'pages.delete'],
-        'admin' => ['admin.access', 'users.manage', 'pages.create', 'pages.edit', 'pages.publish'],
+        'superadmin' => ['admin.access', 'users.manage', 'roles.manage', 'pages.create', 'pages.edit', 'pages.publish', 'pages.delete', 'articles.create', 'articles.edit', 'articles.publish', 'articles.delete'],
+        'admin' => ['admin.access', 'users.manage', 'pages.create', 'pages.edit', 'pages.publish', 'articles.create', 'articles.edit', 'articles.publish'],
         'user' => [],
     ];
 

@@ -131,3 +131,50 @@ if (pageEditorForm && typeof window.MovesEditor === 'function') {
         if (slugPreview) slugPreview.textContent = slugField.value || 'slug-da-pagina';
     });
 }
+
+const articleEditorForm = document.querySelector('[data-moves-article-editor]');
+if (articleEditorForm && typeof window.MovesEditor === 'function') {
+    const field = articleEditorForm.querySelector('#article-content');
+    const editor = new window.MovesEditor('#moves-article-editor', {
+        placeholder: 'Escreva o conteúdo do artigo…',
+        minHeight: 420,
+        initialHTML: field?.value ?? '',
+        onChange(html) {
+            if (field) field.value = html;
+        },
+        imageUploader() {
+            return Promise.reject(new Error('Uploads de imagem estão desativados.'));
+        },
+    });
+
+    articleEditorForm.querySelectorAll('[data-mode="html"], [data-action="image"]').forEach((control) => control.remove());
+    editor.editor.addEventListener('paste', (event) => {
+        event.preventDefault();
+        event.stopImmediatePropagation();
+        const text = event.clipboardData?.getData('text/plain') ?? '';
+        document.execCommand('insertText', false, text);
+    }, true);
+    editor.editor.addEventListener('drop', (event) => {
+        event.preventDefault();
+        event.stopImmediatePropagation();
+    }, true);
+    editor.editor.addEventListener('dragover', (event) => event.preventDefault(), true);
+    articleEditorForm.addEventListener('submit', () => {
+        if (field) field.value = editor.getHTML();
+    });
+    if (field) field.hidden = true;
+
+    const titleField = articleEditorForm.querySelector('[name="title"]');
+    const slugField = articleEditorForm.querySelector('[name="slug"]');
+    const slugPreview = articleEditorForm.querySelector('[data-article-slug-preview]');
+    let slugChanged = Boolean(slugField?.value);
+    slugField?.addEventListener('input', () => { slugChanged = true; });
+    titleField?.addEventListener('input', () => {
+        if (!slugField || slugChanged) return;
+        slugField.value = titleField.value.normalize('NFD').replace(/[\u0300-\u036f]/g, '').toLowerCase().replace(/[^a-z0-9]+/g, '-').replace(/^-|-$/g, '');
+        if (slugPreview) slugPreview.textContent = slugField.value || 'slug-do-artigo';
+    });
+    slugField?.addEventListener('input', () => {
+        if (slugPreview) slugPreview.textContent = slugField.value || 'slug-do-artigo';
+    });
+}
