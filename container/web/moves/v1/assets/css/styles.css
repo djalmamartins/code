@@ -266,7 +266,7 @@ body {
     position: absolute;
     inset: 0;
     border-radius: 24px;
-    background: linear-gradient(180deg, rgba(0, 0, 0, .05), rgba(0, 0, 0, .4)), url('assets/brand/equipe.png') center/cover;
+    background: linear-gradient(180deg, rgba(0, 0, 0, .05), rgba(0, 0, 0, .4)), url('/theme-assets/web/moves/v1/images/equipe.png') center/cover;
     box-shadow: var(--shadow)
 }
 
@@ -466,19 +466,19 @@ body {
 }
 
 .card-1:before {
-    background-image: url('../images/sites.png')
+    background-image: url('/theme-assets/web/moves/v1/images/sites.png')
 }
 
 .card-2:before {
-    background-image: url('../images/sistema.png')
+    background-image: url('/theme-assets/web/moves/v1/images/sistema.png')
 }
 
 .card-3:before {
-    background-image: url('../images/aplicativo.png')
+    background-image: url('/theme-assets/web/moves/v1/images/aplicativo.png')
 }
 
 .card-4:before {
-    background-image: url('../images/hospedagem.png')
+    background-image: url('/theme-assets/web/moves/v1/images/hospedagem.png')
 }
 
 .service-icon {
@@ -569,19 +569,19 @@ body {
 }
 
 .project-a:before {
-    background-image: url('assets/zip/photo-1486406146926-c627a92ad1ab.jpg')
+    background-image: url('/theme-assets/web/moves/v1/images/photo-1486406146926-c627a92ad1ab.jpg')
 }
 
 .project-b:before {
-    background-image: url('assets/zip/photo-1559757175-0eb30cd8c063.jpg')
+    background-image: url('/theme-assets/web/moves/v1/images/photo-1559757175-0eb30cd8c063.jpg')
 }
 
 .project-c:before {
-    background-image: url('assets/zip/photo-1414235077428-338989a2e8c0.jpg')
+    background-image: url('/theme-assets/web/moves/v1/images/photo-1414235077428-338989a2e8c0.jpg')
 }
 
 .project-d:before {
-    background-image: url('assets/zip/photo-1513258496099-48168024aec0.jpg')
+    background-image: url('/theme-assets/web/moves/v1/images/photo-1513258496099-48168024aec0.jpg')
 }
 
 .project-content {
@@ -674,7 +674,7 @@ body {
     position: relative;
     min-height: 420px;
     border-radius: 0;
-    background-image: linear-gradient(180deg, rgba(0, 0, 0, .12), rgba(0, 0, 0, .45)), url('assets/zip/photo-1521737711867-e3b97375f902.jpg')
+    background-image: linear-gradient(180deg, rgba(0, 0, 0, .12), rgba(0, 0, 0, .45)), url('/theme-assets/web/moves/v1/images/team.jpg')
 }
 
 .about-copy {
@@ -756,15 +756,15 @@ body {
 }
 
 .article-1:before {
-    background-image: url('assets/zip/photo-1497366754035-f200968a6e72.jpg')
+    background-image: url('/theme-assets/web/moves/v1/images/photo-1497366754035-f200968a6e72.jpg')
 }
 
 .article-2:before {
-    background-image: url('assets/zip/photo-1677442136019-21780ecad995.jpg')
+    background-image: url('/theme-assets/web/moves/v1/images/photo-1677442136019-21780ecad995.jpg')
 }
 
 .article-3:before {
-    background-image: url('assets/zip/photo-1551650975-87deedd944c3.jpg')
+    background-image: url('/theme-assets/web/moves/v1/images/photo-1551650975-87deedd944c3.jpg')
 }
 
 .article-card:hover .article-image:before {
@@ -2088,11 +2088,11 @@ main img:not(.brand-logo) {
 }
 
 .card-apps:before {
-    background-image: url('../images/aplicativo.png')
+    background-image: url('/theme-assets/web/moves/v1/images/aplicativo.png')
 }
 
 .card-hosting:before {
-    background-image: url('../images/hospedagem.png')
+    background-image: url('/theme-assets/web/moves/v1/images/hospedagem.png')
 }
 
 .reference-offerings {
@@ -2819,7 +2819,7 @@ body {
     top: 0;
     bottom: 0;
     width: 65%;
-    background: url('../images/moves-logo.svg') center/contain no-repeat;
+    background: url('/theme-assets/web/moves/v1/images/moves-logo.svg') center/contain no-repeat;
     opacity: .07;
     transform: rotate(-9deg);
     pointer-events: none
@@ -3378,11 +3378,11 @@ body {
 }
 
 .project-office:before {
-    background-image: url('assets/zip/photo-1516321318423-f06f85e504b3.jpg')
+    background-image: url('/theme-assets/web/moves/v1/images/hero-notebook.jpg')
 }
 
 .project-fashion:before {
-    background-image: url('assets/zip/photo-1558655146-d09347e92766.jpg')
+    background-image: url('/theme-assets/web/moves/v1/images/photo-1558655146-d09347e92766.jpg')
 }
 
 .editorial-project.project-a:after, .editorial-project.project-fashion:after, .editorial-project.project-d:after {
@@ -3608,7 +3608,7 @@ body {
 }
 
 .editorial-project.project-b:before {
-    background-image: url('assets/zip/photo-1551650975-87deedd944c3.jpg')
+    background-image: url('/theme-assets/web/moves/v1/images/photo-1551650975-87deedd944c3.jpg')
 }
 
 /* Project cards share monochrome rest and pink/color hover states. */
@@ -3731,7 +3731,7 @@ body {
     width: 115px;
     height: 125px;
     flex-shrink: 0;
-    background: url('assets/references-user/indicadores.png') right center/auto 125px no-repeat
+    background: url('/theme-assets/web/moves/v1/images/indicators.png') right center/auto 125px no-repeat
 }
 
 .client-reference {
@@ -3943,7 +3943,7 @@ body {
     position: absolute;
     inset: 0;
     z-index: -2;
-    background: url('assets/reference/bg.jpg') center/cover;
+    background: url('/theme-assets/web/moves/v1/images/reference-bg.jpg') center/cover;
     filter: grayscale(1)
 }
 
@@ -4382,11 +4382,11 @@ body {
 }
 
 .service-fold-photo.card-apps:before {
-    background-image: url('assets/zip/photo-1551650975-87deedd944c3.jpg')
+    background-image: url('/theme-assets/web/moves/v1/images/photo-1551650975-87deedd944c3.jpg')
 }
 
 .service-fold-photo.card-hosting:before {
-    background-image: url('assets/zip/photo-1498050108023-c5249f4df085.jpg')
+    background-image: url('/theme-assets/web/moves/v1/images/photo-1498050108023-c5249f4df085.jpg')
 }
 
 .service-fold-photo:hover:before {

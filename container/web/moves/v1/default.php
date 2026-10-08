@@ -30,7 +30,7 @@
     <link rel="preconnect" href="https://fonts.googleapis.com">
     <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
     <link href="https://fonts.googleapis.com/css2?family=Manrope:wght@400;500;600;700;800&amp;display=swap" rel="stylesheet">
-    <link rel="stylesheet" href="<?= $this->e($this->asset("css/styles.css")) ?>">
+    <link rel="stylesheet" href="<?= $this->e(url("assets/moves.min.css")) ?>">
     <?= $this->section("head") ?>
 </head>
 <body>
@@ -42,7 +42,7 @@
         <?= $this->section("content") ?>
     </main>
     <?php $this->insert("components/footer") ?>
-    <script src="<?= $this->e($this->asset("js/script.js")) ?>" defer></script>
+    <script src="<?= $this->e(url("assets/moves.min.js")) ?>" defer></script>
     <?= $this->section("scripts") ?>
 </body>
 </html>

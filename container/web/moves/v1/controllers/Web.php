@@ -23,18 +23,16 @@ class Web extends Controller
     public function __construct(?Router $router = null)
     {
         $themePath = dirname(__DIR__);
-        $projectPath = dirname(__DIR__, 5);
-        $assetPath = $projectPath
-            . "/public/"
-            . trim(APP_THEME_ASSET_BASE, "/")
-            . "/web/moves/v1";
+        $assetPath = $themePath . "/assets";
 
         parent::__construct($themePath);
 
         $this->view->loadExtension(new Asset(
             $assetPath,
-            theme(null, "web", "moves", "v1")
+            url("theme-assets/web/moves/v1")
         ));
+
+        $this->view->share("currentPath", parse_url($_SERVER["REQUEST_URI"] ?? "/", PHP_URL_PATH) ?: "/");
     }
 
     /**
@@ -42,18 +40,37 @@ class Web extends Controller
      */
     public function home(): void
     {
-        $title = APP_NAME;
-        $description = "Plataforma PHP modular para sites, CMS e aplicativos.";
+        $this->render("pages/home", "Estratégia, Design e Tecnologia — MOVES", "Moves: sites, sistemas web, aplicativos e hospedagem para colocar ideias em movimento.", url());
+    }
+
+    /** Renderiza a apresentação institucional da Moves. */
+    public function about(): void
+    {
+        $this->render("pages/sobre", "Sobre a Moves", "Estratégia, design e tecnologia trabalhando juntos para transformar desafios em experiências digitais.", url("sobre"));
+    }
+
+    /** Renderiza as soluções institucionais. */
+    public function solutions(): void
+    {
+        $this->render("pages/solucoes", "Soluções digitais — MOVES", "Sites, sistemas web, aplicativos e hospedagem: conheça as soluções da Moves.", url("solucoes"));
+    }
+
+    /** Renderiza a página de contato sem realizar envio de dados. */
+    public function contact(): void
+    {
+        $this->render("pages/contato", "Contato — MOVES", "Conte seu projeto para a Moves e prepare sua solicitação de proposta.", url("contato"));
+    }
+
+    /** Renderiza uma página usando o layout e o SEO compartilhados. */
+    private function render(string $template, string $title, string $description, string $canonical): void
+    {
         $head = $this->seo
             ->openGraph(APP_NAME, "pt_BR", "website")
-            ->optimize($title, $description, url(), "")
+            ->organization("Moves", url(), url("theme-assets/web/moves/v1/images/moves-logo.svg"), $description)
+            ->optimize($title, $description, $canonical, url("theme-assets/web/moves/v1/images/hero-notebook.jpg"))
             ->render();
 
         header("Content-Type: text/html; charset=utf-8");
-        echo $this->view->render("pages/home", [
-            "head" => $head,
-            "heading" => $title,
-            "description" => $description,
-        ]);
+        echo $this->view->render($template, ["head" => $head]);
     }
 }
