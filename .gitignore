@@ -1,0 +1,11 @@
+/.idea/workspace.xml
+/vendor/
+/.phpunit.cache/
+/storage/cache/*
+/storage/logs/*
+/storage/uploads/*
+!/storage/cache/.gitkeep
+!/storage/logs/.gitkeep
+!/storage/uploads/.gitkeep
+*.key
+*.pem
