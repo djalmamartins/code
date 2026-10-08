@@ -11,6 +11,7 @@
 
 require dirname(__DIR__) . "/index.php";
 
+use Moves\Boot\ThemeLoader;
 use MovesCode\Router\Router;
 
 $path = parse_url($_SERVER['REQUEST_URI'] ?? '/', PHP_URL_PATH) ?: '/';
@@ -26,8 +27,16 @@ if ($path === '/health') {
     exit;
 }
 
-$router = (new Router(url()))->namespace("Moves\\App");
-$router->get("/", "Web:home", "web.home");
+try {
+    $theme = ThemeLoader::load("web");
+    $router = new Router(url());
+    $theme["routes"]($router);
+} catch (Throwable $exception) {
+    http_response_code(500);
+    header("Content-Type: text/plain; charset=utf-8");
+    echo "Request Error";
+    exit;
+}
 
 if (!$router->dispatch()) {
     $status = $router->error() ?? 500;

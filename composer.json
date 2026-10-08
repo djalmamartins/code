@@ -21,7 +21,10 @@
             "MovesCode\\App\\": "src/",
             "Moves\\Modules\\": "modules/",
             "Moves\\": "source/"
-        }
+        },
+        "classmap": [
+            "container/"
+        ]
     },
     "config": {
         "sort-packages": true,

@@ -1,15 +1,15 @@
 <?php
 
 /**
- * Moves Code | Web
+ * Moves Code | Moves Web Controller
  *
- * Controla as páginas públicas do site Moves.
+ * Controla as páginas públicas do tema Moves v1.
  *
  * @author Djalma Martins
- * @package Moves\App
+ * @package Moves\Themes\Web\MovesV1\Controllers
  */
 
-namespace Moves\App;
+namespace Moves\Themes\Web\MovesV1\Controllers;
 
 use Moves\Core\Controller;
 use MovesCode\Router\Router;
@@ -18,22 +18,22 @@ use MovesCode\View\Extension\Asset;
 class Web extends Controller
 {
     /**
-     * Inicializa o tema e os assets das páginas públicas.
+     * Inicializa as views e os assets do tema Moves v1.
      */
     public function __construct(?Router $router = null)
     {
-        $theme = APP_THEMES["web"];
-        $themePath = dirname(__DIR__, 2) . "/container/web/{$theme["name"]}/{$theme["version"]}";
-        $assetPath = dirname(__DIR__, 2)
+        $themePath = dirname(__DIR__);
+        $projectPath = dirname(__DIR__, 5);
+        $assetPath = $projectPath
             . "/public/"
             . trim(APP_THEME_ASSET_BASE, "/")
-            . "/web/{$theme["name"]}/{$theme["version"]}";
+            . "/web/moves/v1";
 
         parent::__construct($themePath);
 
         $this->view->loadExtension(new Asset(
             $assetPath,
-            theme(null, "web", $theme["name"], $theme["version"])
+            theme(null, "web", "moves", "v1")
         ));
     }
 
