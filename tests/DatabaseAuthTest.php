@@ -46,13 +46,25 @@ try {
     $user->email = $email;
     $user->password = $password;
     $user->status = 'active';
+    $user->role = 'superadmin';
     assertDatabaseAuthTest($user->save(), 'Could not create transactional user fixture.');
+    assertDatabaseAuthTest($user->role === 'user', 'New account was not assigned the least-privileged role.');
 
     $auth = new Auth($session);
     $sessionId = session_id();
     assertDatabaseAuthTest($auth->login($email, $password), 'Valid database-backed login failed.');
     assertDatabaseAuthTest(session_id() !== $sessionId, 'Database-backed login did not regenerate the session.');
     assertDatabaseAuthTest($auth->user()?->email === $email, 'Authenticated database user could not be loaded.');
+    assertDatabaseAuthTest(!$auth->can('admin.access'), 'Active database user received admin access by default.');
+    $pdo->prepare("UPDATE users SET role = 'admin' WHERE id = :id")->execute(['id' => $user->id]);
+    assertDatabaseAuthTest($auth->can('admin.access'), 'Database-backed admin permission was not recognized.');
+    assertDatabaseAuthTest(!$auth->can('roles.manage'), 'Admin received a superadmin-only permission.');
+    $loadedUser = $auth->user();
+    $loadedUser->role = 'superadmin';
+    assertDatabaseAuthTest($loadedUser->save(), 'Database-backed user update failed.');
+    assertDatabaseAuthTest($loadedUser->role === 'admin', 'Database-backed User::save() allowed privilege escalation.');
+    $pdo->prepare("UPDATE users SET role = 'superadmin' WHERE id = :id")->execute(['id' => $user->id]);
+    assertDatabaseAuthTest($auth->can('roles.manage'), 'Database-backed superadmin permission was not recognized.');
     $auth->logout();
     assertDatabaseAuthTest($auth->user() === null, 'Database-backed logout failed.');
 

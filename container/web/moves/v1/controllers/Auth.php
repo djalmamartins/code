@@ -36,8 +36,9 @@ class Auth extends Controller
     public function showLogin(): void
     {
         try {
-            if ((new AuthService($this->session))->user() !== null) {
-                $this->redirect('admin');
+            $auth = new AuthService($this->session);
+            if ($auth->user() !== null) {
+                $this->redirect($auth->can('admin.access') ? 'admin' : '');
                 return;
             }
         } catch (Throwable) {
@@ -64,16 +65,18 @@ class Auth extends Controller
         }
 
         try {
-            if (!(new AuthService($this->session))->login($email, $password)) {
+            $auth = new AuthService($this->session);
+            if (!$auth->login($email, $password)) {
                 $this->renderLogin('E-mail ou senha inválidos.', 401, $email);
                 return;
             }
+            $destination = $auth->can('admin.access') ? 'admin' : '';
         } catch (Throwable) {
             $this->unavailable();
             return;
         }
 
-        $this->redirect('admin');
+        $this->redirect($destination);
     }
 
     /** Encerra a sessão somente por POST com token CSRF válido. */
@@ -102,6 +105,11 @@ class Auth extends Controller
 
         if (!$user instanceof User) {
             $this->redirect('login');
+            return;
+        }
+
+        if (!(new AuthService($this->session))->can('admin.access')) {
+            $this->redirect('');
             return;
         }
 

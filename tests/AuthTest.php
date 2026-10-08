@@ -35,6 +35,7 @@ $pdo->exec("CREATE TABLE users (
     email VARCHAR(254) NOT NULL COLLATE NOCASE UNIQUE,
     password VARCHAR(255) NOT NULL,
     status VARCHAR(16) NOT NULL DEFAULT 'active',
+    role VARCHAR(16) NOT NULL DEFAULT 'user',
     created_at TEXT DEFAULT CURRENT_TIMESTAMP,
     updated_at TEXT DEFAULT CURRENT_TIMESTAMP
 )");
@@ -56,7 +57,9 @@ $user->name = 'Usuário de Teste';
 $user->email = 'Teste@exemplo.com';
 $user->password = 'senha-segura-de-teste';
 $user->status = 'active';
+$user->role = 'superadmin';
 assertAuthTest($user->save(), 'User creation failed.');
+assertAuthTest($user->role === 'user', 'A new account received a privileged role through User::save().');
 assertAuthTest(password_verify('senha-segura-de-teste', $user->password), 'Password was not hashed.');
 assertAuthTest(password_get_info($user->password)['options']['cost'] === 12, 'Password hash cost is below the configured value.');
 assertAuthTest($user->email === 'teste@exemplo.com', 'Email was not normalized.');
@@ -74,6 +77,19 @@ $sessionId = session_id();
 assertAuthTest($auth->login('teste@exemplo.com', 'senha-segura-de-teste'), 'Valid login failed.');
 assertAuthTest(session_id() !== $sessionId, 'Session ID was not regenerated after login.');
 assertAuthTest($auth->user()?->id == $user->id, 'Authenticated user could not be loaded.');
+assertAuthTest(!$auth->can('admin.access'), 'An active user received administrative access by default.');
+assertAuthTest(!$auth->can('roles.manage'), 'A user received role-management permission by default.');
+$pdo->prepare("UPDATE users SET role = 'admin' WHERE id = :id")->execute(['id' => $user->id]);
+assertAuthTest($auth->can('admin.access'), 'Admin profile was denied its explicit permission.');
+assertAuthTest(!$auth->can('roles.manage'), 'Admin profile received superadmin-only permission.');
+$mutatedUser = $auth->user();
+$mutatedUser->role = 'superadmin';
+assertAuthTest($mutatedUser->save(), 'Existing user update failed.');
+assertAuthTest($mutatedUser->role === 'admin', 'User::save() allowed self-escalation to superadmin.');
+$pdo->prepare("UPDATE users SET role = 'superadmin' WHERE id = :id")->execute(['id' => $user->id]);
+assertAuthTest($auth->can('roles.manage'), 'Superadmin profile was denied explicit role-management permission.');
+$pdo->prepare("UPDATE users SET role = 'unknown' WHERE id = :id")->execute(['id' => $user->id]);
+assertAuthTest(!$auth->can('admin.access'), 'Unknown roles were not denied by default.');
 assertAuthTest($session->validateCsrf($session->csrfToken()), 'Valid CSRF token was rejected.');
 assertAuthTest(!$session->validateCsrf('invalid-token'), 'Invalid CSRF token was accepted.');
 $auth->logout();

@@ -12,6 +12,7 @@
 namespace Moves\Models;
 
 use MovesCode\Model\Model;
+use MovesCode\Model\Connection;
 
 class User extends Model
 {
@@ -21,7 +22,7 @@ class User extends Model
 
     public function __construct()
     {
-        parent::__construct('users', ['id'], ['name', 'email', 'password', 'status']);
+        parent::__construct('users', ['id'], ['name', 'email', 'password', 'status', 'role']);
     }
 
     /**
@@ -71,9 +72,24 @@ class User extends Model
             return false;
         }
 
+        if ($currentId === null) {
+            // New accounts never receive a privileged role through the User model.
+            $role = 'user';
+        } else {
+            $roleQuery = Connection::get()->prepare('SELECT role FROM users WHERE id = :id');
+            $roleQuery->execute(['id' => $currentId]);
+            $storedRole = $roleQuery->fetchColumn();
+            if (!is_string($storedRole)) {
+                return false;
+            }
+            // Role changes are restricted to the explicit, confirmed CLI command.
+            $role = $storedRole;
+        }
+
         $this->name = $name;
         $this->email = $email;
         $this->status = $status;
+        $this->role = $role;
         if (!$isPasswordHash || password_needs_rehash($password, PASSWORD_DEFAULT, self::PASSWORD_OPTIONS)) {
             $this->password = password_hash($password, PASSWORD_DEFAULT, self::PASSWORD_OPTIONS);
         }
@@ -84,7 +100,7 @@ class User extends Model
     /**
      * Retorna os campos permitidos para apresentação, sem o hash da senha.
      *
-     * @return array{id: int|string|null, name: string|null, email: string|null, status: string|null}
+     * @return array{id: int|string|null, name: string|null, email: string|null, status: string|null, role: string|null}
      */
     public function publicData(): array
     {
@@ -93,6 +109,7 @@ class User extends Model
             'name' => $this->name,
             'email' => $this->email,
             'status' => $this->status,
+            'role' => $this->role,
         ];
     }
 }

@@ -4,11 +4,13 @@ CREATE TABLE IF NOT EXISTS users (
     email VARCHAR(254) NOT NULL,
     password VARCHAR(255) NOT NULL,
     status VARCHAR(16) NOT NULL DEFAULT 'active',
+    role VARCHAR(16) NOT NULL DEFAULT 'user',
     created_at TIMESTAMP NOT NULL DEFAULT CURRENT_TIMESTAMP,
     updated_at TIMESTAMP NOT NULL DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP,
     PRIMARY KEY (id),
     UNIQUE KEY users_email_unique (email),
-    KEY users_status_index (status)
+    KEY users_status_index (status),
+    KEY users_role_index (role)
 ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci;
 
 CREATE TABLE IF NOT EXISTS auth_attempts (

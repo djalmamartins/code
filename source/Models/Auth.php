@@ -21,6 +21,11 @@ class Auth
     private const WINDOW_MINUTES = 15;
     private const PASSWORD_OPTIONS = ['cost' => 12];
     private const DUMMY_HASH = '$2y$12$Sbie8wlhNn.JF8LF0Y2ySOpHbaRh8VXZQuYE2ohvtibhJLxNHBjHG';
+    private const ROLE_PERMISSIONS = [
+        'superadmin' => ['admin.access', 'users.manage', 'roles.manage'],
+        'admin' => ['admin.access'],
+        'user' => [],
+    ];
 
     private Session $session;
 
@@ -84,6 +89,19 @@ class Auth
         $user = (new User())->findById((int) $this->session->auth_user_id);
 
         return $user instanceof User && $user->status === 'active' ? $user : null;
+    }
+
+    /** Verifica uma permissão explícita; papéis desconhecidos têm acesso negado. */
+    public function can(string $permission): bool
+    {
+        $user = $this->user();
+        if (!$user instanceof User || $permission === '') {
+            return false;
+        }
+
+        $permissions = self::ROLE_PERMISSIONS[(string) $user->role] ?? [];
+
+        return in_array($permission, $permissions, true);
     }
 
     /**
