@@ -15,6 +15,8 @@ use MovesCode\Model\Message;
 
 class Session
 {
+    private const INACTIVITY_TIMEOUT = 1800;
+
     /**
      * Inicia a sessão caso ainda não esteja ativa.
      */
@@ -31,6 +33,13 @@ class Session
                 'samesite' => 'Lax',
             ]);
             session_start();
+
+            $lastActivity = $_SESSION['last_activity'] ?? null;
+            if (is_numeric($lastActivity) && time() - (int) $lastActivity > self::INACTIVITY_TIMEOUT) {
+                $_SESSION = [];
+                session_regenerate_id(true);
+            }
+            $_SESSION['last_activity'] = time();
         }
     }
 

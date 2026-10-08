@@ -52,7 +52,7 @@ class Auth extends Controller
     public function login(): void
     {
         if (!$this->session->validateCsrf($this->postString('_token'))) {
-            $this->renderLogin('A solicitação expirou. Atualize a página e tente novamente.', 419);
+            $this->renderLogin('A solicitação expirou. Atualize a página e tente novamente.', 403);
             return;
         }
 
@@ -80,7 +80,7 @@ class Auth extends Controller
     public function logout(): void
     {
         if (!$this->session->validateCsrf($this->postString('_token'))) {
-            http_response_code(419);
+            http_response_code(403);
             header('Content-Type: text/plain; charset=utf-8');
             echo 'Solicitação inválida';
             return;

@@ -44,6 +44,47 @@ function assertSupportEmailTest(bool $condition, string $message): void
     }
 }
 
+putenv('MAIL_HOST=smtp.example.test');
+putenv('MAIL_PORT=465');
+putenv('MAIL_USERNAME=test-user');
+putenv('MAIL_PASSWORD=test-password');
+putenv('MAIL_ENCRYPTION=ssl');
+$smtpMailer = new PHPMailer(true);
+new Email($smtpMailer);
+assertSupportEmailTest($smtpMailer->Mailer === 'smtp', 'SMTP transport was not configured from the environment.');
+assertSupportEmailTest($smtpMailer->Host === 'smtp.example.test', 'SMTP host was not applied.');
+assertSupportEmailTest($smtpMailer->Port === 465, 'SMTP port was not applied.');
+assertSupportEmailTest($smtpMailer->Username === 'test-user', 'SMTP username was not applied.');
+assertSupportEmailTest($smtpMailer->Password === 'test-password', 'SMTP password was not applied.');
+assertSupportEmailTest($smtpMailer->SMTPSecure === PHPMailer::ENCRYPTION_SMTPS, 'SMTP encryption was not applied.');
+foreach (['MAIL_HOST', 'MAIL_PORT', 'MAIL_USERNAME', 'MAIL_PASSWORD', 'MAIL_ENCRYPTION'] as $variable) {
+    putenv($variable);
+}
+putenv('MAIL_FROM_ADDRESS=remetente-configurado@example.test');
+putenv('MAIL_FROM_NAME=Moves Configurado');
+$configuredFromMailer = new SimulatedMailer(true);
+$configuredFromEmail = new Email($configuredFromMailer);
+$configuredFromResult = $configuredFromEmail->sendEmail(
+    'destinatario@example.test',
+    'Remetente configurado',
+    '<p>Teste de configuração</p>'
+);
+assertSupportEmailTest($configuredFromResult['success'], 'Configured sender was not used.');
+assertSupportEmailTest($configuredFromMailer->From === 'remetente-configurado@example.test', 'Configured sender address was ignored.');
+assertSupportEmailTest($configuredFromMailer->FromName === 'Moves Configurado', 'Configured sender name was ignored.');
+putenv('MAIL_FROM_ADDRESS');
+putenv("MAIL_FROM_NAME=Moves\r\nBcc: intruso@example.test");
+$headerInjectionMailer = new SimulatedMailer(true);
+$headerInjectionEmail = new Email($headerInjectionMailer);
+$headerInjectionResult = $headerInjectionEmail->sendEmail(
+    'destinatario@example.test',
+    'Cabeçalho inválido',
+    '<p>Teste</p>'
+);
+assertSupportEmailTest(!$headerInjectionResult['success'], 'Configured sender name allowed header injection.');
+assertSupportEmailTest($headerInjectionMailer->simulatedSends === 0, 'Injected sender name reached the transport.');
+putenv('MAIL_FROM_NAME');
+
 $mailer = new SimulatedMailer(true);
 $email = new Email($mailer);
 $attachmentPath = tempnam(sys_get_temp_dir(), 'moves-email-test-');

@@ -101,6 +101,14 @@ assertAuthTest(
     'Session cookie protections are missing.'
 );
 
+$session->set('auth_user_id', $user->id);
+$_SESSION['last_activity'] = time() - 1801;
+$expiredSessionId = session_id();
+session_write_close();
+new Session();
+assertAuthTest(session_id() !== $expiredSessionId, 'Expired session identifier was not rotated.');
+assertAuthTest(!isset($_SESSION['auth_user_id']), 'Expired session retained authenticated state.');
+
 session_unset();
 session_destroy();
 echo "Authentication tests passed.\n";

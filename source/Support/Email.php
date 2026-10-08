@@ -32,6 +32,7 @@ class Email
     public function __construct(?PHPMailer $mail = null)
     {
         $this->mail = $mail ?? new PHPMailer(true);
+        $this->configureSmtp();
         $this->data = new \stdClass();
         $this->message = new Message();
     }
@@ -109,24 +110,24 @@ class Email
         string $recipient,
         string $subject,
         string $htmlBody,
-        string $from,
+        string $from = '',
         ?string $textBody = null,
         ?string $fromName = null,
         array $attachments = [],
         string $recipientName = ''
     ): array {
+        $from = $from !== '' ? $from : (string) (getenv('MAIL_FROM_ADDRESS') ?: '');
+        $fromName ??= (string) (getenv('MAIL_FROM_NAME') ?: (defined('APP_NAME') ? APP_NAME : 'Moves'));
         if (!PHPMailer::validateAddress($recipient)
             || !PHPMailer::validateAddress($from)
             || trim($subject) === ''
             || trim($htmlBody) === ''
             || $this->hasHeaderBreak($subject)
-            || $this->hasHeaderBreak($fromName ?? '')
+            || $this->hasHeaderBreak($fromName)
             || $this->hasHeaderBreak($recipientName)
         ) {
             return $this->failure('Dados de e-mail inválidos.');
         }
-
-        $fromName = $fromName ?? (defined('APP_NAME') ? APP_NAME : 'Moves');
 
         try {
             // PHPMailer objects can be reused; clear recipient-specific state to avoid cross-send leakage.
@@ -209,5 +210,43 @@ class Email
     public function message(): Message
     {
         return $this->message;
+    }
+
+    /** Configura SMTP somente quando MAIL_HOST estiver definido no ambiente. */
+    private function configureSmtp(): void
+    {
+        $host = getenv('MAIL_HOST');
+        if ($host === false || trim($host) === '') {
+            return;
+        }
+
+        $port = filter_var(getenv('MAIL_PORT') ?: '587', FILTER_VALIDATE_INT, [
+            'options' => ['min_range' => 1, 'max_range' => 65535],
+        ]);
+        $encryption = strtolower((string) (getenv('MAIL_ENCRYPTION') ?: 'tls'));
+        if ($port === false || !in_array($encryption, ['tls', 'ssl', 'none'], true)
+            || preg_match('/[\x00-\x20\x7f]/', $host)
+        ) {
+            throw new InvalidArgumentException('Invalid SMTP configuration.');
+        }
+
+        $username = (string) (getenv('MAIL_USERNAME') ?: '');
+        $password = (string) (getenv('MAIL_PASSWORD') ?: '');
+        if (($username === '') !== ($password === '') || ($username !== '' && $encryption === 'none')) {
+            throw new InvalidArgumentException('Invalid SMTP configuration.');
+        }
+
+        $this->mail->isSMTP();
+        $this->mail->Host = trim($host);
+        $this->mail->Port = $port;
+        $this->mail->SMTPAuth = $username !== '';
+        $this->mail->Username = $username;
+        $this->mail->Password = $password;
+        $this->mail->Timeout = 10;
+        $this->mail->SMTPSecure = match ($encryption) {
+            'tls' => PHPMailer::ENCRYPTION_STARTTLS,
+            'ssl' => PHPMailer::ENCRYPTION_SMTPS,
+            default => '',
+        };
     }
 }
