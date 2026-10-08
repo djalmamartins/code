@@ -1,5 +1,14 @@
 <?php
 
+/**
+ * Moves Code | Front Controller
+ *
+ * Recebe as requisições públicas e expõe o diagnóstico inicial da aplicação.
+ *
+ * @author Djalma Martins
+ * @package Moves
+ */
+
 declare(strict_types=1);
 
 $path = parse_url($_SERVER['REQUEST_URI'] ?? '/', PHP_URL_PATH) ?: '/';

@@ -19,7 +19,8 @@
     "autoload": {
         "psr-4": {
             "MovesCode\\App\\": "src/",
-            "Moves\\Modules\\": "modules/"
+            "Moves\\Modules\\": "modules/",
+            "Moves\\": "source/"
         }
     },
     "config": {
