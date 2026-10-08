@@ -26,6 +26,22 @@ Para garantir o PHP compatível com o XAMPP:
 /Applications/XAMPP/xamppfiles/bin/php /opt/homebrew/bin/composer dump-autoload
 ```
 
+## Autenticação local
+
+O acesso administrativo usa `MovesCode\Model\Connection`, configurada pelas
+variáveis de ambiente `MOVES_DB_DSN`, `MOVES_DB_USER` e `MOVES_DB_PASSWORD`.
+Nenhuma credencial padrão é definida pelo projeto. Configure essas variáveis no
+ambiente do Apache/XAMPP antes de habilitar o login e aplique
+`database/schema.sql` no banco escolhido. O schema cria somente as tabelas
+`users` e `auth_attempts` caso ainda não existam; não cria banco, usuário ou
+conta administrativa.
+
+As rotas disponíveis são `GET/POST /login`, `POST /logout` e `GET /admin`.
+O login requer contas provisionadas diretamente por um processo administrativo
+confiável; não há cadastro público. Sem conexão ou schema, as páginas públicas
+continuam disponíveis e operações de autenticação respondem genericamente com
+HTTP 503.
+
 ## Apache e certificados
 
 O VirtualHost foi adicionado a `/Applications/XAMPP/xamppfiles/etc/extra/httpd-vhosts.conf`. O certificado e a chave ficam fora de `public`:

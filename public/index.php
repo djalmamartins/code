@@ -11,6 +11,7 @@
 
 require dirname(__DIR__) . "/index.php";
 
+use Moves\Boot\Database;
 use Moves\Boot\ThemeLoader;
 use MovesCode\Router\Router;
 
@@ -25,6 +26,12 @@ if ($path === '/health') {
         'timestamp' => gmdate(DATE_ATOM),
     ], JSON_THROW_ON_ERROR | JSON_UNESCAPED_SLASHES);
     exit;
+}
+
+try {
+    Database::configureFromEnvironment();
+} catch (Throwable) {
+    // Authentication routes report a generic unavailable response; no connection details are exposed.
 }
 
 try {
