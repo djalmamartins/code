@@ -218,7 +218,7 @@ try {
     [$status, $pagesList] = authorizationHttpRequest($baseUrl . '/admin/pages', 'GET', $adminCookie);
     assertAuthorizationHttpTest($status === 200 && str_contains($pagesList, 'Nenhuma página cadastrada.'), 'Pages management listing did not render.');
     [$status, $pageForm] = authorizationHttpRequest($baseUrl . '/admin/pages/new', 'GET', $adminCookie);
-    assertAuthorizationHttpTest($status === 200 && str_contains($pageForm, 'data-moves-page-editor') && str_contains($pageForm, 'cms-assets/wysiwyg/js/app.js'), 'Moves Editor was not integrated into page creation.');
+    assertAuthorizationHttpTest($status === 200 && str_contains($pageForm, 'data-moves-page-editor') && str_contains($pageForm, 'data-open-media-picker') && str_contains($pageForm, 'cms-assets/wysiwyg/js/app.js'), 'Moves Editor or media picker was not integrated into page creation.');
     $pageCsrf = authorizationHttpCsrf($pageForm);
     [$status] = authorizationHttpRequest($baseUrl . '/admin/pages', 'POST', $adminCookie, http_build_query([
         'title' => 'Must fail CSRF', 'slug' => 'csrf-fail', 'content' => '<p>Sem token</p>',
@@ -299,13 +299,15 @@ try {
     assertAuthorizationHttpTest($status === 422, 'Duplicate category slug was accepted (HTTP ' . $status . '): ' . substr(strip_tags($duplicateCategoryResponse), 0, 240));
 
     [$status, $articleForm] = authorizationHttpRequest($baseUrl . '/admin/blog/new', 'GET', $adminCookie);
-    assertAuthorizationHttpTest($status === 200 && str_contains($articleForm, 'data-moves-article-editor') && str_contains($articleForm, 'cms-assets/wysiwyg/js/app.js'), 'Moves Editor was not integrated into article creation.');
+    assertAuthorizationHttpTest($status === 200 && str_contains($articleForm, 'data-moves-article-editor') && str_contains($articleForm, 'data-media-picker-cover') && str_contains($articleForm, 'data-media-picker-insert') && str_contains($articleForm, 'cms-assets/wysiwyg/js/app.js'), 'Moves Editor or media picker was not integrated into article creation.');
     $articleCsrf = authorizationHttpCsrf($articleForm);
     $articlePayload = [
         '_token' => $articleCsrf, 'title' => 'Artigo de teste XSS', 'slug' => 'artigo-teste-xss',
         'excerpt' => 'Resumo editorial seguro.', 'category_id' => $categoryId, 'cover_image' => '',
         'content' => '<h2>Conteúdo seguro</h2><p onclick="alert(1)">Permitido <strong>negrito</strong></p><script>alert(1)</script><img src="data:image/png;base64,AA=="><a href="javascript:alert(1)">perigoso</a>',
     ];
+    [$status] = authorizationHttpRequest($baseUrl . '/admin/blog', 'POST', $adminCookie, http_build_query(array_replace($articlePayload, ['cover_image' => 'https://external.invalid/cover.jpg'])));
+    assertAuthorizationHttpTest($status === 422, 'Article cover accepted an external image that is not authorized by the media library.');
     [$status] = authorizationHttpRequest($baseUrl . '/admin/blog', 'POST', $adminCookie, http_build_query(array_diff_key($articlePayload, ['_token' => true])));
     assertAuthorizationHttpTest($status === 403, 'Article creation without CSRF was accepted.');
     [$status, , , $articleLocation] = authorizationHttpRequest($baseUrl . '/admin/blog', 'POST', $adminCookie, http_build_query($articlePayload));
@@ -417,10 +419,90 @@ try {
     $mediaId = (int) $mediaRow['id'];
     $storedMediaPath = $mediaRoot . '/' . $mediaRow['storage_path'];
     assertAuthorizationHttpTest(is_file($storedMediaPath), 'Uploaded image was not stored outside the public directory.');
+    [$status, $pickerWithMedia] = authorizationHttpRequest($baseUrl . '/admin/media/picker', 'GET', $adminCookie);
+    assertAuthorizationHttpTest($status === 200 && str_contains($pickerWithMedia, 'data-media-public-url="' . $baseUrl . '/media/' . $mediaId . '"') && str_contains($pickerWithMedia, 'data-media-alt="Imagem de teste isolado"'), 'Media picker did not expose validated public URL and alt text.');
     [$status, $servedImage, , , $servedHeaders] = authorizationHttpRequest($baseUrl . '/admin/media/' . $mediaId . '/file', 'GET', $adminCookie);
     assertAuthorizationHttpTest($status === 200 && $servedImage === $validPng, 'Protected media file delivery failed.');
     $joinedHeaders = strtolower(implode("\n", $servedHeaders));
     assertAuthorizationHttpTest(str_contains($joinedHeaders, 'content-type: image/png') && str_contains($joinedHeaders, 'x-content-type-options: nosniff') && str_contains($joinedHeaders, 'cross-origin-resource-policy: same-origin') && str_contains($joinedHeaders, 'cache-control: private, no-store'), 'Protected media response security headers were incomplete.');
+    [$status] = authorizationHttpRequest($baseUrl . '/media/' . $mediaId, 'GET');
+    assertAuthorizationHttpTest($status === 404, 'Unreferenced media was delivered publicly.');
+
+    [$status, $pageEdit] = authorizationHttpRequest($baseUrl . '/admin/pages/' . $pageId . '/edit', 'GET', $adminCookie);
+    $pageCsrf = authorizationHttpCsrf($pageEdit);
+    [$status] = authorizationHttpRequest($baseUrl . '/admin/pages/' . $pageId, 'POST', $adminCookie, http_build_query([
+        '_token' => $pageCsrf, 'title' => 'Página inválida', 'slug' => 'pagina-xss-teste',
+        'content' => '<img src="/admin/media/999999/file" alt="ausente">',
+    ]));
+    assertAuthorizationHttpTest($status === 422, 'Page accepted an image that does not exist in the media library.');
+    $pageImageContent = '<p>Imagem editorial</p><figure><img src="/admin/media/' . $mediaId . '/file" alt="Imagem autorizada" onerror="alert(1)"></figure><img src="https://external.invalid/image.png"><img src="data:image/png;base64,AA==">';
+    [$status, , , $pageEditLocation] = authorizationHttpRequest($baseUrl . '/admin/pages/' . $pageId, 'POST', $adminCookie, http_build_query([
+        '_token' => $pageCsrf, 'title' => 'Página com mídia', 'slug' => 'pagina-xss-teste', 'content' => $pageImageContent,
+    ]));
+    assertAuthorizationHttpTest($status === 303, 'Page media selection could not be saved.');
+    $database = new PDO('sqlite:' . $databasePath);
+    $savedPageContent = (string) $database->query('SELECT content FROM pages WHERE id=' . $pageId)->fetchColumn();
+    assertAuthorizationHttpTest(str_contains($savedPageContent, 'src="/media/' . $mediaId . '"') && str_contains($savedPageContent, 'alt="Imagem autorizada"'), 'Selected page media was not normalized to its public media URL.');
+    foreach (['onerror', 'external.invalid', 'data:image'] as $unsafeImageInput) {
+        assertAuthorizationHttpTest(!str_contains(strtolower($savedPageContent), strtolower($unsafeImageInput)), 'Unsafe page image input was persisted: ' . $unsafeImageInput);
+    }
+    unset($database);
+    [$status, $pageEdit] = authorizationHttpRequest($pageEditLocation, 'GET', $adminCookie);
+    $pageCsrf = authorizationHttpCsrf($pageEdit);
+    [$status] = authorizationHttpRequest($baseUrl . '/admin/pages/' . $pageId . '/publish', 'POST', $adminCookie, http_build_query(['_token' => $pageCsrf]));
+    assertAuthorizationHttpTest($status === 303, 'Page with selected media could not be published.');
+    [$status, $publishedImagePage] = authorizationHttpRequest($baseUrl . '/pagina/pagina-xss-teste');
+    assertAuthorizationHttpTest($status === 200 && str_contains($publishedImagePage, 'src="/media/' . $mediaId . '"') && str_contains($publishedImagePage, 'alt="Imagem autorizada"'), 'Published page did not render its authorized media.');
+    [$status, $publicImage] = authorizationHttpRequest($baseUrl . '/media/' . $mediaId, 'GET');
+    assertAuthorizationHttpTest($status === 200 && $publicImage === $validPng, 'Published page media was not delivered publicly.');
+
+    $database = new PDO('sqlite:' . $databasePath);
+    $database->prepare('INSERT INTO article_categories (name, slug, description) VALUES (?, ?, ?)')->execute(['Mídia de teste', 'midia-de-teste', 'Categoria isolada de teste.']);
+    $mediaCategoryId = (int) $database->lastInsertId();
+    unset($database);
+    [$status, $mediaArticleForm] = authorizationHttpRequest($baseUrl . '/admin/blog/new', 'GET', $adminCookie);
+    $articleCsrf = authorizationHttpCsrf($mediaArticleForm);
+    [$status, , , $mediaArticleLocation] = authorizationHttpRequest($baseUrl . '/admin/blog', 'POST', $adminCookie, http_build_query([
+        '_token' => $articleCsrf, 'title' => 'Artigo com imagem de teste', 'slug' => 'artigo-com-imagem-de-teste',
+        'excerpt' => 'Artigo de validação de mídia.', 'category_id' => $mediaCategoryId, 'cover_image' => '',
+        'content' => '<p>Conteúdo de teste.</p>',
+    ]));
+    assertAuthorizationHttpTest($status === 303 && preg_match('~/admin/blog/(\d+)/edit$~', $mediaArticleLocation, $mediaArticleIdMatch) === 1, 'Isolated article for media authorization could not be created.');
+    $mediaArticleId = (int) $mediaArticleIdMatch[1];
+    [$status, $articleEdit] = authorizationHttpRequest($baseUrl . '/admin/blog/' . $mediaArticleId . '/edit', 'GET', $adminCookie);
+    $articleCsrf = authorizationHttpCsrf($articleEdit);
+    [$status, , , $articleEditLocation] = authorizationHttpRequest($baseUrl . '/admin/blog/' . $mediaArticleId, 'POST', $adminCookie, http_build_query([
+        '_token' => $articleCsrf, 'title' => 'Artigo com imagem de teste', 'slug' => 'artigo-com-imagem-de-teste',
+        'excerpt' => 'Artigo de validação de mídia.', 'category_id' => $mediaCategoryId, 'cover_image' => '/media/' . $mediaId,
+        'content' => '<p>Conteúdo editorial.</p><img src="/admin/media/' . $mediaId . '/file" alt="Imagem no artigo" onerror="alert(1)">',
+    ]));
+    assertAuthorizationHttpTest($status === 303, 'Article media cover selection could not be saved.');
+    [$status, $articleEdit] = authorizationHttpRequest($articleEditLocation, 'GET', $adminCookie);
+    $articleCsrf = authorizationHttpCsrf($articleEdit);
+    [$status] = authorizationHttpRequest($baseUrl . '/admin/blog/' . $mediaArticleId . '/publish', 'POST', $adminCookie, http_build_query(['_token' => $articleCsrf]));
+    assertAuthorizationHttpTest($status === 303, 'Article with selected media could not be published.');
+    [$status, $publicArticleWithCover] = authorizationHttpRequest($baseUrl . '/blog/artigo-com-imagem-de-teste');
+    assertAuthorizationHttpTest($status === 200 && str_contains($publicArticleWithCover, 'src="/media/' . $mediaId . '"') && str_contains($publicArticleWithCover, 'alt="Imagem no artigo"') && !str_contains($publicArticleWithCover, 'onerror'), 'Published article cover or editorial image did not render safely.');
+    [$status] = authorizationHttpRequest($baseUrl . '/media/' . $mediaId, 'GET');
+    assertAuthorizationHttpTest($status === 200, 'Published article cover did not authorize public media delivery.');
+    [$status, $pageEdit] = authorizationHttpRequest($baseUrl . '/admin/pages/' . $pageId . '/edit', 'GET', $adminCookie);
+    $pageCsrf = authorizationHttpCsrf($pageEdit);
+    [$status] = authorizationHttpRequest($baseUrl . '/admin/pages/' . $pageId . '/unpublish', 'POST', $adminCookie, http_build_query(['_token' => $pageCsrf]));
+    assertAuthorizationHttpTest($status === 303, 'Page with selected media could not be unpublished during article authorization test.');
+    [$status, $superadminMediaDetail] = authorizationHttpRequest($baseUrl . '/admin/media/' . $mediaId . '/edit', 'GET', $superadminCookie);
+    $mediaDeleteCsrf = authorizationHttpCsrf($superadminMediaDetail);
+    [$status] = authorizationHttpRequest($baseUrl . '/admin/media/' . $mediaId . '/delete', 'POST', $superadminCookie, http_build_query(['_token' => $mediaDeleteCsrf]));
+    assertAuthorizationHttpTest($status === 409, 'Media referenced by a published article cover could be deleted.');
+    [$status, $articleEdit] = authorizationHttpRequest($baseUrl . '/admin/blog/' . $mediaArticleId . '/edit', 'GET', $adminCookie);
+    $articleCsrf = authorizationHttpCsrf($articleEdit);
+    [$status] = authorizationHttpRequest($baseUrl . '/admin/blog/' . $mediaArticleId, 'POST', $adminCookie, http_build_query([
+        '_token' => $articleCsrf, 'title' => 'Artigo com imagem de teste', 'slug' => 'artigo-com-imagem-de-teste',
+        'excerpt' => 'Artigo de validação de mídia.', 'category_id' => $mediaCategoryId, 'cover_image' => '', 'content' => '<p>Conteúdo editorial.</p>',
+    ]));
+    assertAuthorizationHttpTest($status === 303, 'Article cover could not be removed during test cleanup.');
+    [$status] = authorizationHttpRequest($baseUrl . '/media/' . $mediaId, 'GET');
+    assertAuthorizationHttpTest($status === 404, 'Unpublished page or unreferenced article kept media publicly available.');
+
     [$status] = authorizationHttpMultipart($baseUrl . '/admin/media', $adminCookie, ['_token' => 'invalid', 'title' => '', 'alt_text' => ''], 'csrf.png', 'image/png', $validPng);
     assertAuthorizationHttpTest($status === 403, 'Media upload accepted an invalid CSRF token.');
     [$status] = authorizationHttpMultipart($baseUrl . '/admin/media', $adminCookie, ['_token' => $mediaCsrf], 'invalid.png', 'image/png', 'not an image');

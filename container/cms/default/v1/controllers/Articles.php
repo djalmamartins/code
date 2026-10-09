@@ -15,6 +15,7 @@ use Moves\Core\Controller;
 use Moves\Core\Session;
 use Moves\Models\Article;
 use Moves\Models\ArticleCategory;
+use Moves\Models\MediaItem;
 use Moves\Models\Auth;
 use Moves\Models\User;
 use Moves\Support\HtmlSanitizer;
@@ -245,11 +246,24 @@ class Articles extends Controller
         if ($excerpt === '' || mb_strlen($excerpt, 'UTF-8') > 500) { $errors[] = 'Informe um resumo com até 500 caracteres.'; }
         if ($categoryId === false || $categoryId < 1 || (new ArticleCategory())->findCategory((int) $categoryId) === null) { $errors[] = 'Selecione uma categoria existente.'; }
         if (strlen($content) > 1_000_000) { $errors[] = 'O conteúdo excede o limite de 1 MB.'; }
-        if ($cover !== '' && (strlen($cover) > 500 || filter_var($cover, FILTER_VALIDATE_URL) === false || strtolower((string) parse_url($cover, PHP_URL_SCHEME)) !== 'https')) {
-            $errors[] = 'A imagem de capa deve ser uma URL HTTPS válida. Uploads não estão disponíveis.';
+        if ($cover !== '' && strlen($cover) > 500) {
+            $errors[] = 'Selecione uma imagem de capa da biblioteca.';
+        } elseif (preg_match('~^/media/([1-9][0-9]*)$~D', $cover, $coverMatch) === 1) {
+            if ((new MediaItem())->findMedia((int) $coverMatch[1]) === null) { $errors[] = 'A imagem de capa selecionada não existe na biblioteca.'; }
+        } elseif ($cover !== '') {
+            $errors[] = 'Selecione uma imagem de capa da biblioteca.';
         }
 
-        try { $safeContent = (new HtmlSanitizer())->purify($content); }
+        try {
+            $safeContent = (new HtmlSanitizer())->purifyWithMediaImages($content);
+            preg_match_all('~src="/media/([1-9][0-9]*)"~', $safeContent, $mediaMatches);
+            foreach (array_unique($mediaMatches[1] ?? []) as $mediaId) {
+                if ((new MediaItem())->findMedia((int) $mediaId) === null) {
+                    $errors[] = 'O conteúdo contém uma imagem que não existe na biblioteca.';
+                    break;
+                }
+            }
+        }
         catch (Throwable) { $safeContent = ''; $errors[] = 'A sanitização do conteúdo está indisponível; nada foi salvo.'; }
 
         return [

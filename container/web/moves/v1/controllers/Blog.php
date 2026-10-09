@@ -47,7 +47,7 @@ class Blog extends Controller
         try {
             $article = (new Article())->findPublishedBySlug($slug, gmdate('Y-m-d H:i:s'));
             if ($article === null) { $this->notFound('Artigo não encontrado', $slug); return; }
-            $article['content'] = (new HtmlSanitizer())->purify((string) $article['content']);
+            $article['content'] = (new HtmlSanitizer())->purifyWithMediaImages((string) $article['content']);
             $description = trim((string) $article['excerpt']);
             $this->render('pages/blog/post', $article['title'] . ' — MOVES', $description,
                 url('blog/' . rawurlencode($slug)), ['article' => $article]);

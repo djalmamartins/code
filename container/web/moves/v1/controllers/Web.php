@@ -103,7 +103,7 @@ class Web extends Controller
                 $this->publicPageNotFound();
                 return;
             }
-            $page['content'] = (new HtmlSanitizer())->purify((string) $page['content']);
+            $page['content'] = (new HtmlSanitizer())->purifyWithMediaImages((string) $page['content']);
             $description = mb_substr(trim(strip_tags($page['content'])), 0, 160, 'UTF-8');
             $this->render(
                 'pages/page',

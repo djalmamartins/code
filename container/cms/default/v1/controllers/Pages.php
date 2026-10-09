@@ -15,6 +15,7 @@ use Moves\Core\Controller;
 use Moves\Core\Session;
 use Moves\Models\Auth;
 use Moves\Models\Page;
+use Moves\Models\MediaItem;
 use Moves\Models\User;
 use Moves\Support\HtmlSanitizer;
 use MovesCode\Model\Message;
@@ -163,7 +164,16 @@ class Pages extends Controller
         if (strlen($slug) > 200 || preg_match('/^[a-z0-9]+(?:-[a-z0-9]+)*$/', $slug) !== 1) { $errors[] = 'Informe um slug com letras minúsculas, números e hífens.'; }
         if (strlen($content) > 1_000_000) { $errors[] = 'O conteúdo excede o limite de 1 MB.'; }
 
-        try { $safeContent = (new HtmlSanitizer())->purify($content); }
+        try {
+            $safeContent = (new HtmlSanitizer())->purifyWithMediaImages($content);
+            preg_match_all('~src="/media/([1-9][0-9]*)"~', $safeContent, $mediaMatches);
+            foreach (array_unique($mediaMatches[1] ?? []) as $mediaId) {
+                if ((new MediaItem())->findMedia((int) $mediaId) === null) {
+                    $errors[] = 'O conteúdo contém uma imagem que não existe na biblioteca.';
+                    break;
+                }
+            }
+        }
         catch (Throwable) { $safeContent = ''; $errors[] = 'A sanitização do conteúdo está indisponível; nada foi salvo.'; }
 
         return [
