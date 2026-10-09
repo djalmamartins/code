@@ -15,6 +15,11 @@ use Moves\Themes\Cms\DefaultV1\Controllers\Articles;
 use Moves\Themes\Cms\DefaultV1\Controllers\Media;
 use Moves\Themes\Cms\DefaultV1\Controllers\EditorialContent;
 use Moves\Themes\Cms\DefaultV1\Controllers\Assets;
+use Moves\Themes\Cms\DefaultV1\Controllers\Settings;
+use Moves\Themes\Cms\DefaultV1\Controllers\Notifications;
+use Moves\Themes\Cms\DefaultV1\Controllers\Reports;
+use Moves\Themes\Cms\DefaultV1\Controllers\SystemLogs;
+use Moves\Themes\Cms\DefaultV1\Controllers\Versions;
 use MovesCode\Router\Router;
 
 return [
@@ -26,8 +31,11 @@ return [
         $router->get('/cms-assets/{package}/{directory}/{file}', Assets::class . ':show', 'cms.assets');
         $router->get('/admin', Users::class . ':dashboard', 'cms.dashboard');
         $router->get('/admin/editor', Users::class . ':editorDemo', 'cms.editor.demo');
-        $router->get('/admin/reports', Users::class . ':placeholder', 'cms.reports');
-        $router->get('/admin/notifications', Users::class . ':placeholder', 'cms.notifications');
+        $router->get('/admin/reports', Reports::class . ':index', 'cms.reports');
+        $router->get('/admin/reports/export.csv', Reports::class . ':export', 'cms.reports.export');
+        $router->get('/admin/notifications', Notifications::class . ':index', 'cms.notifications');
+        $router->post('/admin/notifications/{id}/read', Notifications::class . ':markRead', 'cms.notifications.read');
+        $router->post('/admin/notifications/read-all', Notifications::class . ':markAllRead', 'cms.notifications.read-all');
         $router->get('/admin/proposals', Users::class . ':placeholder', 'cms.proposals');
         $router->get('/admin/pages', Pages::class . ':index', 'cms.pages.index');
         $router->get('/admin/pages/new', Pages::class . ':createForm', 'cms.pages.create');
@@ -76,9 +84,11 @@ return [
         $router->get('/admin/faqs/{id}/edit', EditorialContent::class . ':editFaq', 'cms.faqs.edit');
         $router->post('/admin/faqs/{id}', EditorialContent::class . ':updateFaq', 'cms.faqs.update');
         $router->post('/admin/faqs/{id}/delete', EditorialContent::class . ':deleteFaq', 'cms.faqs.delete');
-        $router->get('/admin/settings', Users::class . ':placeholder', 'cms.settings');
-        $router->get('/admin/versions', Users::class . ':placeholder', 'cms.versions');
-        $router->get('/admin/system-logs', Users::class . ':placeholder', 'cms.system-logs');
+        $router->get('/admin/settings', Settings::class . ':index', 'cms.settings');
+        $router->post('/admin/settings', Settings::class . ':update', 'cms.settings.update');
+        $router->get('/admin/versions', Versions::class . ':index', 'cms.versions');
+        $router->post('/admin/versions', Versions::class . ':publish', 'cms.versions.publish');
+        $router->get('/admin/system-logs', SystemLogs::class . ':index', 'cms.system-logs');
         $router->get('/admin/users', Users::class . ':index', 'cms.users.index');
         $router->get('/admin/users/new', Users::class . ':createForm', 'cms.users.create');
         $router->post('/admin/users', Users::class . ':create', 'cms.users.store');

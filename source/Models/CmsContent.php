@@ -119,6 +119,13 @@ class CmsContent
     /** Confirma uso público antes de entregar uma imagem privada da biblioteca. */
     public function isPublicMedia(int $mediaId, string $now): bool
     {
+        try {
+            $logo = Connection::get()->prepare("SELECT 1 FROM cms_settings WHERE setting_key = 'logo_media_id' AND setting_value = :logo LIMIT 1");
+            $logo->execute(['logo' => (string) $mediaId]);
+            if ($logo->fetchColumn() !== false) { return true; }
+        } catch (\Throwable) {
+            // Existing installations remain compatible until the additive settings migration is applied.
+        }
         $statement = Connection::get()->prepare(
             "SELECT EXISTS(SELECT 1 FROM slides WHERE image_media_id = :slide AND status = 'active' AND (published_at IS NULL OR published_at <= :slide_now)) "
             . "OR EXISTS(SELECT 1 FROM testimonials WHERE photo_media_id = :testimonial AND status = 'published' AND (published_at IS NULL OR published_at <= :testimonial_now)) "

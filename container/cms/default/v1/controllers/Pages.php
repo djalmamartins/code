@@ -14,6 +14,7 @@ namespace Moves\Themes\Cms\DefaultV1\Controllers;
 use Moves\Core\Controller;
 use Moves\Core\Session;
 use Moves\Models\Auth;
+use Moves\Models\CmsNotifications;
 use Moves\Models\Page;
 use Moves\Models\MediaItem;
 use Moves\Models\User;
@@ -125,6 +126,7 @@ class Pages extends Controller
             $page = new Page();
             if ($page->findPage($id) === null) { $this->notFound(); return; }
             $page->setPublished($id, true);
+            $this->notifyAdmins($id, true);
             $this->successFlash('Página publicada.');
             $this->redirect('admin/pages');
         } catch (Throwable) { $this->unavailable(); }
@@ -138,6 +140,7 @@ class Pages extends Controller
             $page = new Page();
             if ($page->findPage($id) === null) { $this->notFound(); return; }
             $page->setPublished($id, false);
+            $this->notifyAdmins($id, false);
             $this->successFlash('Página retirada do site.');
             $this->redirect('admin/pages');
         } catch (Throwable) { $this->unavailable(); }
@@ -151,6 +154,22 @@ class Pages extends Controller
             $this->successFlash('Página excluída.');
             $this->redirect('admin/pages');
         } catch (Throwable) { $this->unavailable(); }
+    }
+
+    private function notifyAdmins(int $id, bool $published): void
+    {
+        try {
+            $actor = $this->auth->user();
+            (new CmsNotifications())->broadcast(
+                'pages:' . ($published ? 'published' : 'unpublished') . ':' . $id . ':' . gmdate('YmdHis'),
+                $published ? 'Página publicada' : 'Página retirada do site',
+                $published ? 'Uma página foi publicada no site.' : 'Uma página foi retirada do site.',
+                '/admin/pages',
+                $actor instanceof User ? (int) $actor->id : null
+            );
+        } catch (Throwable) {
+            // Notification delivery does not roll back a successful content change.
+        }
     }
 
     private function validatedInput(): array
@@ -211,6 +230,7 @@ class Pages extends Controller
         header('Content-Type: text/html; charset=utf-8');
         $actor = $this->auth->user();
         $flash = $this->session->flash();
+        if ($actor instanceof User && $this->auth->can('notifications.view')) { $data += (new CmsNotifications())->headerContext((int) $actor->id); }
         echo $this->view->render('screen', $data + [
             'view' => $view,
             'csrf' => $this->session->csrfToken(),

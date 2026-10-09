@@ -17,6 +17,7 @@ use Moves\Models\Article;
 use Moves\Models\ArticleCategory;
 use Moves\Models\MediaItem;
 use Moves\Models\Auth;
+use Moves\Models\CmsNotifications;
 use Moves\Models\User;
 use Moves\Support\HtmlSanitizer;
 use MovesCode\Model\Message;
@@ -135,6 +136,7 @@ class Articles extends Controller
             $articles = new Article();
             if ($articles->findArticle($id) === null) { $this->notFound(); return; }
             $articles->setPublished($id, $published);
+            $this->notifyAdmins($id, $published);
             $this->flash($published ? 'Artigo publicado.' : 'Artigo retirado do blog.');
             $this->redirect('admin/blog');
         } catch (Throwable) { $this->unavailable(); }
@@ -148,6 +150,22 @@ class Articles extends Controller
             $this->flash('Artigo excluído.');
             $this->redirect('admin/blog');
         } catch (Throwable) { $this->unavailable(); }
+    }
+
+    private function notifyAdmins(int $id, bool $published): void
+    {
+        try {
+            $actor = $this->auth->user();
+            (new CmsNotifications())->broadcast(
+                'articles:' . ($published ? 'published' : 'unpublished') . ':' . $id . ':' . gmdate('YmdHis'),
+                $published ? 'Artigo publicado' : 'Artigo retirado do blog',
+                $published ? 'Um artigo foi publicado no blog.' : 'Um artigo foi retirado do blog.',
+                '/admin/blog',
+                $actor instanceof User ? (int) $actor->id : null
+            );
+        } catch (Throwable) {
+            // Notification delivery does not roll back a successful content change.
+        }
     }
 
     public function categories(): void
@@ -303,6 +321,7 @@ class Articles extends Controller
         header('Content-Type: text/html; charset=utf-8');
         $actor = $this->auth->user();
         $flash = $this->session->flash();
+        if ($actor instanceof User && $this->auth->can('notifications.view')) { $data += (new CmsNotifications())->headerContext((int) $actor->id); }
         echo $this->view->render('screen', $data + [
             'view' => $view, 'csrf' => $this->session->csrfToken(), 'actor' => $actor?->publicData(),
             'canManageRoles' => $this->auth->can('roles.manage'), 'canManageUsers' => $this->auth->can('users.manage'),

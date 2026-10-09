@@ -123,6 +123,9 @@ $database->exec('CREATE TABLE auth_attempts (
 )');
 $database->exec('CREATE TABLE user_sessions (id INTEGER PRIMARY KEY AUTOINCREMENT, user_id INTEGER, session_hash CHAR(64) UNIQUE, device_label TEXT, created_at DATETIME, last_activity_at DATETIME, revoked_at DATETIME)');
 $database->exec('CREATE TABLE security_events (id INTEGER PRIMARY KEY AUTOINCREMENT, actor_user_id INTEGER NULL, subject_user_id INTEGER NULL, event_type TEXT, created_at DATETIME)');
+$database->exec('CREATE TABLE cms_settings (setting_key TEXT PRIMARY KEY, setting_value TEXT NULL, updated_by INTEGER NULL, created_at TEXT DEFAULT CURRENT_TIMESTAMP, updated_at TEXT DEFAULT CURRENT_TIMESTAMP)');
+$database->exec('CREATE TABLE cms_notifications (id INTEGER PRIMARY KEY AUTOINCREMENT, recipient_user_id INTEGER NOT NULL, actor_user_id INTEGER NULL, event_key TEXT NOT NULL, title TEXT NOT NULL, message TEXT NOT NULL, target_path TEXT NOT NULL, created_at DATETIME NOT NULL, read_at DATETIME NULL, UNIQUE(recipient_user_id, event_key))');
+$database->exec('CREATE TABLE cms_product_versions (id INTEGER PRIMARY KEY AUTOINCREMENT, product TEXT NOT NULL, version_number TEXT NOT NULL, release_name TEXT NOT NULL, notes TEXT NOT NULL, published_by INTEGER NOT NULL, published_at TEXT NOT NULL, UNIQUE(product, version_number))');
 $database->exec('CREATE TABLE user_recovery_codes (id INTEGER PRIMARY KEY AUTOINCREMENT, user_id INTEGER, code_hash TEXT, used_at DATETIME NULL, created_at DATETIME DEFAULT CURRENT_TIMESTAMP)');
 $database->exec('CREATE TABLE pages (id INTEGER PRIMARY KEY AUTOINCREMENT, title VARCHAR(200) NOT NULL, slug VARCHAR(200) NOT NULL UNIQUE, content TEXT NOT NULL, status VARCHAR(16) NOT NULL DEFAULT \'draft\', author_id INTEGER NOT NULL, published_at DATETIME NULL, created_at DATETIME DEFAULT CURRENT_TIMESTAMP, updated_at DATETIME DEFAULT CURRENT_TIMESTAMP)');
 $database->exec('CREATE TABLE article_categories (id INTEGER PRIMARY KEY AUTOINCREMENT, name VARCHAR(120) NOT NULL, slug VARCHAR(140) NOT NULL UNIQUE, description VARCHAR(500) NULL, created_at DATETIME DEFAULT CURRENT_TIMESTAMP, updated_at DATETIME DEFAULT CURRENT_TIMESTAMP)');
@@ -210,6 +213,87 @@ try {
     assertAuthorizationHttpTest($status === 200 && str_contains($adminPage, 'HTTP Admin Fixture'), 'Authorized HTTP admin access failed.');
     [$status, $adminPage] = authorizationHttpRequest($baseUrl . '/admin', 'GET', $adminCookie);
     assertAuthorizationHttpTest($status === 200 && str_contains($adminPage, 'HTTP Admin Fixture'), 'Authenticated HTTP session did not persist.');
+    [$status, $settingsPage] = authorizationHttpRequest($baseUrl . '/admin/settings', 'GET', $adminCookie);
+    assertAuthorizationHttpTest($status === 200 && str_contains($settingsPage, 'Identidade e publicação'), 'CMS settings screen did not render the general tab (HTTP ' . $status . ', body: ' . substr(strip_tags($settingsPage), 0, 240) . ').');
+    $settingsCsrf = authorizationHttpCsrf($settingsPage);
+    [$status] = authorizationHttpRequest($baseUrl . '/admin/settings', 'POST', $adminCookie, http_build_query([
+        '_token' => $settingsCsrf, 'tab' => 'general', 'site_name' => 'Moves de teste', 'site_tagline' => 'Uma assinatura de teste',
+    ]));
+    assertAuthorizationHttpTest($status === 303, 'Authorized CMS settings update failed with HTTP ' . $status . '.');
+    [$status, $settingsPage] = authorizationHttpRequest($baseUrl . '/admin/settings?tab=contact', 'GET', $adminCookie);
+    $settingsCsrf = authorizationHttpCsrf($settingsPage);
+    [$status] = authorizationHttpRequest($baseUrl . '/admin/settings', 'POST', $adminCookie, http_build_query([
+        '_token' => $settingsCsrf, 'tab' => 'contact', 'contact_email' => 'contato@example.test', 'contact_phone' => '(31) 3333-0000', 'contact_address' => 'Brasil',
+    ]));
+    assertAuthorizationHttpTest($status === 303, 'Contact settings update failed or cleared unrelated settings.');
+    $database = new PDO('sqlite:' . $databasePath);
+    $savedSettings = $database->query('SELECT setting_key, setting_value FROM cms_settings')->fetchAll(PDO::FETCH_KEY_PAIR);
+    assertAuthorizationHttpTest(($savedSettings['site_name'] ?? '') === 'Moves de teste' && ($savedSettings['contact_email'] ?? '') === 'contato@example.test', 'Settings were not persisted or a tab update overwrote unrelated keys.');
+    assertAuthorizationHttpTest((int) $database->query("SELECT COUNT(*) FROM security_events WHERE event_type='cms_settings_updated'")->fetchColumn() === 2, 'Settings updates were not recorded in the security audit trail.');
+    $connectionClass = implode(chr(92), ['MovesCode', 'Model', 'Connection']);
+    $connectionClass::configure($database);
+    (new \Moves\Models\CmsNotifications())->broadcast('pages:published:fixture-1', 'Página publicada', 'Uma página foi publicada.', '/admin/pages', 3);
+    (new \Moves\Models\CmsNotifications())->broadcast('pages:published:fixture-1', 'Página publicada', 'Uma página foi publicada.', '/admin/pages', 3);
+    $notificationCount = (int) $database->query('SELECT COUNT(*) FROM cms_notifications')->fetchColumn();
+    assertAuthorizationHttpTest($notificationCount === 2, 'CMS notification broadcast was not idempotent or role-scoped; count=' . $notificationCount . '.');
+    assertAuthorizationHttpTest((int) $database->query('SELECT COUNT(DISTINCT recipient_user_id) FROM cms_notifications WHERE recipient_user_id IN (1,4)')->fetchColumn() === 2
+        && (int) $database->query('SELECT COUNT(*) FROM cms_notifications WHERE recipient_user_id IN (2,3)')->fetchColumn() === 0,
+        'CMS notifications included a standard user or the event actor.');
+    $notificationClass = implode(chr(92), ['Moves', 'Models', 'CmsNotifications']);
+    $notificationModel = new $notificationClass();
+    $ownedNotificationId = (int) $database->query('SELECT id FROM cms_notifications WHERE recipient_user_id=1 LIMIT 1')->fetchColumn();
+    $notificationId = $ownedNotificationId;
+    assertAuthorizationHttpTest($notificationModel->markRead($ownedNotificationId, 1), 'Recipient could not mark their own notification as read.');
+    assertAuthorizationHttpTest(!$notificationModel->markRead($ownedNotificationId, 2), 'Another account marked a notification it did not own.');
+    $notificationModel->broadcast('pages:published:header-fixture', 'Notificação de cabeçalho', 'Contagem isolada para o teste do cabeçalho.', '/admin/pages', 3);
+    unset($database);
+    [$status, $publicHome] = authorizationHttpRequest($baseUrl . '/', 'GET');
+    assertAuthorizationHttpTest($status === 200 && str_contains($publicHome, 'Moves de teste') && str_contains($publicHome, 'contato@example.test'), 'Saved public settings were not applied to the institutional theme.');
+    [$status, $emailSettings] = authorizationHttpRequest($baseUrl . '/admin/settings?tab=email', 'GET', $adminCookie);
+    assertAuthorizationHttpTest($status === 200 && str_contains($emailSettings, 'Remetente de e-mail') && str_contains($emailSettings, 'servidor') && !str_contains($emailSettings, 'name="MAIL_PASSWORD"'), 'Email settings exposed editable transport credentials.');
+    [$status] = authorizationHttpRequest($baseUrl . '/admin/settings', 'POST', $adminCookie, http_build_query(['_token' => 'invalid', 'tab' => 'general', 'site_name' => 'Ataque']));
+    assertAuthorizationHttpTest($status === 403, 'Settings update accepted invalid CSRF.');
+    [$status, $notificationsPage] = authorizationHttpRequest($baseUrl . '/admin/notifications?filter=unread', 'GET', $adminCookie);
+    assertAuthorizationHttpTest($status === 200 && str_contains($notificationsPage, 'Central de notificações'), 'CMS notifications screen did not render for an authorized user.');
+    [$status, $adminPage] = authorizationHttpRequest($baseUrl . '/admin', 'GET', $adminCookie);
+    assertAuthorizationHttpTest($status === 200 && str_contains($adminPage, 'notification-menu') && str_contains($adminPage, 'Ver todas'), 'The shared CMS notification dropdown did not render.');
+    $notificationCsrf = authorizationHttpCsrf($notificationsPage);
+    [$status] = authorizationHttpRequest($baseUrl . '/admin/notifications/' . $notificationId . '/read', 'POST', $adminCookie, http_build_query(['_token' => 'invalid']));
+    assertAuthorizationHttpTest($status === 403, 'Notification read action accepted invalid CSRF.');
+    [$status, $reportsPage] = authorizationHttpRequest($baseUrl . '/admin/reports', 'GET', $adminCookie);
+    assertAuthorizationHttpTest($status === 200 && str_contains($reportsPage, 'Relatórios do CMS') && str_contains($reportsPage, 'Contagens agregadas'), 'CMS reports did not render real-data methodology (HTTP ' . $status . ', ' . substr(strip_tags($reportsPage), 0, 180) . ').');
+    $futureSummary = (new \Moves\Models\CmsReports())->summary('2099-01-01', '2099-01-31');
+    assertAuthorizationHttpTest($futureSummary['categories'] === 0, 'The report date filter was not applied to article categories.');
+    assertAuthorizationHttpTest((new \Moves\Models\CmsReports())->publicationSeries('2099-01-01', '2099-01-31') === [], 'Publication history ignored its selected date range.');
+    [$status, $reportCsv] = authorizationHttpRequest($baseUrl . '/admin/reports/export.csv', 'GET', $adminCookie);
+    assertAuthorizationHttpTest($status === 200 && str_contains($reportCsv, 'Usuários cadastrados') && str_contains($reportCsv, 'Páginas publicadas'), 'CMS report CSV export was unavailable or incomplete.');
+    [$status, $logsPage] = authorizationHttpRequest($baseUrl . '/admin/system-logs', 'GET', $adminCookie);
+    assertAuthorizationHttpTest($status === 200 && str_contains($logsPage, 'Logs de auditoria') && str_contains($logsPage, 'login success'), 'CMS audit log did not show persisted security events.');
+    [$status, $versionsPage] = authorizationHttpRequest($baseUrl . '/admin/versions?product=studio', 'GET', $adminCookie);
+    assertAuthorizationHttpTest($status === 200 && str_contains($versionsPage, 'Histórico de Studio') && str_contains($versionsPage, 'Nenhuma versão registrada'), 'Product version history did not render for an authorized admin (HTTP ' . $status . ', ' . substr(strip_tags($versionsPage), 0, 180) . ').');
+    $versionCsrf = authorizationHttpCsrf($versionsPage);
+    [$status] = authorizationHttpRequest($baseUrl . '/admin/versions', 'POST', $adminCookie, http_build_query([
+        '_token' => $versionCsrf, 'product' => 'studio', 'version_number' => '1.0.0', 'release_name' => 'Release não autorizada', 'notes' => 'Testa negação de acesso.',
+    ]));
+    assertAuthorizationHttpTest($status === 403, 'Admin without versions.publish could publish a product release.');
+    [$status, $superadminLoginPage, $superadminCookie] = authorizationHttpRequest($baseUrl . '/login');
+    $superadminLoginCsrf = authorizationHttpCsrf($superadminLoginPage);
+    [$status, , $superadminCookie] = authorizationHttpRequest($baseUrl . '/login', 'POST', $superadminCookie, http_build_query([
+        '_token' => $superadminLoginCsrf, 'email' => 'http-superadmin@example.test', 'password' => 'test-password-superadmin',
+    ]));
+    assertAuthorizationHttpTest($status === 303, 'Superadmin fixture could not authenticate for version history.');
+    [$status, $versionsPage] = authorizationHttpRequest($baseUrl . '/admin/versions?product=studio', 'GET', $superadminCookie);
+    $versionCsrf = authorizationHttpCsrf($versionsPage);
+    [$status, , , $versionLocation] = authorizationHttpRequest($baseUrl . '/admin/versions', 'POST', $superadminCookie, http_build_query([
+        '_token' => $versionCsrf, 'product' => 'studio', 'version_number' => '1.0.0', 'release_name' => 'Fundação', 'notes' => 'Histórico inicial de teste.',
+    ]));
+    assertAuthorizationHttpTest($status === 303 && str_contains($versionLocation, 'product=studio'), 'Superadmin could not register a version record.');
+    [$status, $versionsPage] = authorizationHttpRequest($baseUrl . '/admin/versions?product=studio', 'GET', $adminCookie);
+    assertAuthorizationHttpTest($status === 200 && str_contains($versionsPage, 'v1.0.0 · Fundação'), 'Published version was not visible in the history.');
+    [$status] = authorizationHttpRequest($baseUrl . '/admin/versions', 'POST', $superadminCookie, http_build_query([
+        '_token' => 'invalid', 'product' => 'studio', 'version_number' => '2.0.0', 'release_name' => 'CSRF inválido', 'notes' => '',
+    ]));
+    assertAuthorizationHttpTest($status === 403, 'Version publication accepted invalid CSRF.');
     [$status, $editorPage] = authorizationHttpRequest($baseUrl . '/admin/editor', 'GET', $adminCookie);
     assertAuthorizationHttpTest($status === 200 && str_contains($editorPage, 'data-moves-editor-demo') && str_contains($editorPage, 'HTML gerado'), 'Admin editor demonstration was unavailable.');
     assertAuthorizationHttpTest(str_contains($editorPage, 'cms-assets/wysiwyg/js/app.js') && str_contains($editorPage, 'cms-assets/icons/css/moves-icons.css'), 'Editor or icon package assets were not included.');
@@ -256,6 +340,13 @@ try {
     assertAuthorizationHttpTest($status === 303, 'Admin could not publish a page.');
     [$status, $publicPage] = authorizationHttpRequest($baseUrl . '/pagina/pagina-xss-teste');
     assertAuthorizationHttpTest($status === 200 && str_contains($publicPage, 'Página editada') && str_contains($publicPage, '<em>atualizado</em>'), 'Published page was not rendered publicly.');
+    assertAuthorizationHttpTest((new \Moves\Models\CmsReports())->publicationSeries(null, null) !== [], 'Real page publication was not included in the monthly report series.');
+    $database = new PDO('sqlite:' . $databasePath);
+    assertAuthorizationHttpTest((int) $database->query("SELECT COUNT(*) FROM cms_notifications WHERE event_key LIKE 'pages:published:%' AND actor_user_id=1")->fetchColumn() === 2, 'Page publication did not notify other active administrators.');
+    assertAuthorizationHttpTest((int) $database->query("SELECT COUNT(*) FROM cms_notifications WHERE event_key LIKE 'pages:published:%' AND recipient_user_id=2")->fetchColumn() === 0, 'Page publication notification leaked to a standard user.');
+    unset($database);
+    [$status, $adminPage] = authorizationHttpRequest($baseUrl . '/admin', 'GET', $adminCookie);
+    assertAuthorizationHttpTest($status === 200 && str_contains($adminPage, 'notification-badge'), 'Unread notification count was not reflected in the shared CMS header.');
     assertAuthorizationHttpTest(preg_match('/<div class="editorial-content">(.*?)<\/div>/s', $publicPage, $publicContentMatch) === 1, 'Sanitized editorial content container was not rendered.');
     $renderedContent = strtolower($publicContentMatch[1]);
     foreach (['<script', 'onclick', '<img', 'data:image', 'javascript:'] as $unsafeMarkup) {
@@ -391,8 +482,7 @@ try {
     [$status] = authorizationHttpRequest($baseUrl . '/cms-assets/wysiwyg/js/../../../../../../.env', 'GET', $adminCookie);
     assertAuthorizationHttpTest($status === 404, 'CMS asset allowlist permitted an unapproved path.');
     foreach ([
-        '/admin/reports' => 'Relatórios', '/admin/notifications' => 'Notificações', '/admin/proposals' => 'Propostas',
-        '/admin/settings' => 'Configurações', '/admin/versions' => 'Versões', '/admin/system-logs' => 'Log',
+        '/admin/proposals' => 'Propostas',
     ] as $path => $label) {
         [$status, $modulePage] = authorizationHttpRequest($baseUrl . $path, 'GET', $adminCookie);
         assertAuthorizationHttpTest($status === 200 && str_contains($modulePage, 'Funcionalidade pendente') && str_contains($modulePage, $label), 'CMS menu route did not render its honest placeholder: ' . $path);

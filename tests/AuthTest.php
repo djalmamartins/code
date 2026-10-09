@@ -112,6 +112,7 @@ assertAuthTest(!$auth->can('admin.access'), 'An active user received administrat
 assertAuthTest(!$auth->can('roles.manage'), 'A user received role-management permission by default.');
 assertAuthTest(!$auth->can('articles.create') && !$auth->can('articles.edit') && !$auth->can('articles.publish') && !$auth->can('articles.delete'), 'A user received article permissions by default.');
 assertAuthTest(!$auth->can('media.view') && !$auth->can('media.upload') && !$auth->can('media.edit') && !$auth->can('media.delete'), 'A user received media permissions by default.');
+assertAuthTest(!$auth->can('settings.manage'), 'A user received CMS settings permission by default.');
 assertAuthTest(!$auth->can('slides.view') && !$auth->can('slides.manage') && !$auth->can('testimonials.view') && !$auth->can('testimonials.manage') && !$auth->can('faqs.view') && !$auth->can('faqs.manage'), 'A user received editorial module permissions by default.');
 $pdo->prepare("UPDATE users SET role = 'admin' WHERE id = :id")->execute(['id' => $user->id]);
 assertAuthTest($auth->can('admin.access'), 'Admin profile was denied its explicit permission.');
@@ -123,12 +124,15 @@ assertAuthTest(!$auth->can('articles.delete'), 'Admin received article-deletion 
 assertAuthTest($auth->can('media.view') && $auth->can('media.upload') && $auth->can('media.edit'), 'Admin media permissions were not granted explicitly.');
 assertAuthTest(!$auth->can('media.delete'), 'Admin received media-deletion permission.');
 assertAuthTest($auth->can('slides.view') && $auth->can('slides.manage') && $auth->can('testimonials.view') && $auth->can('testimonials.manage') && $auth->can('faqs.view') && $auth->can('faqs.manage'), 'Admin editorial module permissions were not granted explicitly.');
+assertAuthTest($auth->can('settings.manage'), 'Admin settings permission was not granted explicitly.');
+assertAuthTest($auth->can('versions.view') && !$auth->can('versions.publish'), 'Admin version permissions are incorrect.');
 $mutatedUser = $auth->user();
 $mutatedUser->role = 'superadmin';
 assertAuthTest($mutatedUser->save(), 'Existing user update failed.');
 assertAuthTest($mutatedUser->role === 'admin', 'User::save() allowed self-escalation to superadmin.');
 $pdo->prepare("UPDATE users SET role = 'superadmin' WHERE id = :id")->execute(['id' => $user->id]);
 assertAuthTest($auth->can('roles.manage'), 'Superadmin profile was denied explicit role-management permission.');
+assertAuthTest($auth->can('versions.publish'), 'Superadmin version publishing permission was not granted.');
 assertAuthTest($auth->can('pages.delete'), 'Superadmin was denied page-deletion permission.');
 assertAuthTest($auth->can('articles.delete'), 'Superadmin was denied article-deletion permission.');
 assertAuthTest($auth->can('media.view') && $auth->can('media.upload') && $auth->can('media.edit') && $auth->can('media.delete'), 'Superadmin media permissions were not granted explicitly.');
