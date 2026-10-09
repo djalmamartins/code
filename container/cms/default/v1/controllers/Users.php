@@ -331,7 +331,7 @@ class Users extends Controller
         http_response_code($status); header('Cache-Control: no-store'); header('Content-Type: text/html; charset=utf-8');
         $actor = $this->auth->user();
         $message = $this->session->flash();
-        $data += ['view' => $view, 'csrf' => $this->session->csrfToken(), 'actor' => $actor?->publicData(), 'canManageRoles' => $this->auth->can('roles.manage'), 'canManageUsers' => $this->auth->can('users.manage'), 'canAccessAdmin' => $this->auth->can('admin.access'), 'permissions' => ['edit' => $this->auth->can('pages.edit')], 'currentPath' => parse_url((string) ($_SERVER['REQUEST_URI'] ?? '/'), PHP_URL_PATH) ?: '/', 'flash' => $message?->text(), 'errors' => [], 'tab' => 'general', 'record' => null];
+        $data += ['view' => $view, 'csrf' => $this->session->csrfToken(), 'actor' => $actor?->publicData(), 'canManageRoles' => $this->auth->can('roles.manage'), 'canManageUsers' => $this->auth->can('users.manage'), 'canAccessAdmin' => $this->auth->can('admin.access'), 'permissions' => ['edit' => $this->auth->can('pages.edit'), 'view' => $this->auth->can('media.view'), 'upload' => $this->auth->can('media.upload'), 'delete' => $this->auth->can('media.delete')], 'currentPath' => parse_url((string) ($_SERVER['REQUEST_URI'] ?? '/'), PHP_URL_PATH) ?: '/', 'flash' => $message?->text(), 'errors' => [], 'tab' => 'general', 'record' => null];
         echo $this->view->render('screen', $data);
     }
 

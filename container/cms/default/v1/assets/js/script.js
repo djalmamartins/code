@@ -178,3 +178,32 @@ if (articleEditorForm && typeof window.MovesEditor === 'function') {
         if (slugPreview) slugPreview.textContent = slugField.value || 'slug-do-artigo';
     });
 }
+
+const mediaGrid = document.querySelector('[data-media-grid]');
+document.querySelectorAll('[data-media-view]').forEach((button) => {
+    button.addEventListener('click', () => {
+        const listMode = button.dataset.mediaView === 'list';
+        mediaGrid?.classList.toggle('media-grid--list', listMode);
+        document.querySelectorAll('[data-media-view]').forEach((toggle) => {
+            toggle.setAttribute('aria-pressed', toggle === button ? 'true' : 'false');
+        });
+    });
+});
+
+document.querySelectorAll('[data-media-select]').forEach((button) => {
+    button.addEventListener('click', () => {
+        const selection = {
+            id: Number(button.dataset.mediaSelect),
+            title: button.dataset.mediaTitle ?? '',
+            mimeType: button.dataset.mediaMime ?? '',
+            url: button.dataset.mediaUrl ?? '',
+        };
+        const status = document.querySelector('[data-media-selection-status]');
+        if (status) status.textContent = `Imagem selecionada: ${selection.title}. O conteúdo público ainda não aceita imagens da biblioteca.`;
+        window.dispatchEvent(new CustomEvent('moves:media-selected', { detail: selection }));
+        if (window.opener && !window.opener.closed) {
+            window.opener.postMessage({ type: 'moves:media-selected', media: selection }, window.location.origin);
+            window.close();
+        }
+    });
+});

@@ -13,6 +13,10 @@ $this->layout("default", ["head" => $head]);
 
 ?>
 <section class="reference-hero">
+    <?php if (is_array($slide ?? null)): ?>
+    <?php if (!empty($slide['image_media_id'])): ?><img class="reference-hero-image" src="<?= $this->e(url('media/' . (int) $slide['image_media_id'])) ?>" alt="" width="1400" height="933" fetchpriority="high"><?php else: ?><img class="reference-hero-image" src="<?= $this->e($this->asset("images/hero-notebook.jpg")) ?>" alt="Profissional usando um notebook" width="1400" height="933" fetchpriority="high"><?php endif; ?>
+    <div class="section-shell reference-hero-content reveal"><div class="hero-index" aria-hidden="true">01</div><div><p class="eyebrow">MOVES · ESTRATÉGIA, DESIGN E TECNOLOGIA</p><h1><?= $this->e($slide['title']) ?><?php if (($slide['subtitle'] ?? '') !== ''): ?><br><span class="brand-gradient"><?= $this->e($slide['subtitle']) ?></span><?php endif; ?></h1><?php if (($slide['button_text'] ?? '') !== '' && ($slide['button_url'] ?? '') !== ''): ?><a class="hero-portfolio-link" href="<?= $this->e($slide['button_url']) ?>"><?= $this->e($slide['button_text']) ?> <span>↗</span></a><?php endif; ?></div></div>
+    <?php else: ?>
     <img class="reference-hero-image" src="<?= $this->e($this->asset("images/hero-notebook.jpg")) ?>"
          alt="Profissional usando um notebook" width="1400" height="933" fetchpriority="high">
     <div class="section-shell reference-hero-content reveal">
@@ -23,6 +27,7 @@ $this->layout("default", ["head" => $head]);
                                                                                     href="<?= $this->e(url("solucoes")) ?>">EXPLORE
                 AS POSSIBILIDADES <span>↗</span></a></div>
     </div>
+    <?php endif; ?>
 </section>
 <section class="reference-overlap">
     <div><span class="reference-symbol" aria-hidden="true">↗</span>

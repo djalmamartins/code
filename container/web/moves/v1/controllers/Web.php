@@ -13,6 +13,7 @@ namespace Moves\Themes\Web\MovesV1\Controllers;
 
 use Moves\Core\Controller;
 use Moves\Models\Page;
+use Moves\Models\CmsContent;
 use Moves\Support\HtmlSanitizer;
 use MovesCode\Router\Router;
 use MovesCode\View\Extension\Asset;
@@ -43,7 +44,30 @@ class Web extends Controller
      */
     public function home(): void
     {
-        $this->render("pages/home", "Estratégia, Design e Tecnologia — MOVES", "Moves: sites, sistemas web, aplicativos e hospedagem para colocar ideias em movimento.", url());
+        $slide = null;
+        try { $slide = (new CmsContent())->publishedSlides(gmdate('Y-m-d H:i:s'))[0] ?? null; } catch (Throwable) {}
+        $this->render("pages/home", "Estratégia, Design e Tecnologia — MOVES", "Moves: sites, sistemas web, aplicativos e hospedagem para colocar ideias em movimento.", url(), ['slide' => $slide]);
+    }
+
+    /** Exibe perguntas frequentes ativas em uma estrutura nativa e acessível. */
+    public function faqs(): void
+    {
+        $items = [];
+        try {
+            $items = (new CmsContent())->publicFaqs();
+        } catch (Throwable) {
+            // Keep the public route available until the additive CMS migration is applied.
+        }
+        try {
+            foreach ($items as &$item) { $item['answer'] = (new HtmlSanitizer())->purify((string) $item['answer']); }
+            unset($item);
+            $this->render('pages/faq', 'Perguntas frequentes — MOVES', 'Respostas às dúvidas mais comuns sobre as soluções da Moves.', url('faq'), ['faqs' => $items]);
+        } catch (Throwable) {
+            http_response_code(503);
+            header('Cache-Control: no-store');
+            header('Content-Type: text/plain; charset=utf-8');
+            echo 'Conteúdo temporariamente indisponível';
+        }
     }
 
     /** Renderiza a apresentação institucional da Moves. */

@@ -25,6 +25,7 @@ return [
         $router->get("/sobre", Web::class . ":about", "web.about");
         $router->get("/solucoes", Web::class . ":solutions", "web.solutions");
         $router->get("/contato", Web::class . ":contact", "web.contact");
+        $router->get("/faq", Web::class . ":faqs", "web.faq");
         $router->get("/blog", Blog::class . ":index", "web.blog");
         $router->get("/blog/categoria/{slug}", Blog::class . ":category", "web.blog.category");
         $router->get("/blog/{slug}", Blog::class . ":article", "web.blog.article");

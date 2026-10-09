@@ -53,7 +53,28 @@ function authorizationHttpRequest(string $url, string $method = 'GET', string $c
         }
     }
 
-    return [$status, is_string($content) ? $content : '', $cookieHeader, $location];
+    return [$status, is_string($content) ? $content : '', $cookieHeader, $location, $responseHeaders];
+}
+
+function authorizationHttpMultipart(string $url, string $cookie, array $fields, string $fileName, string $mime, string $fileContent): array
+{
+    $boundary = 'moves-test-' . bin2hex(random_bytes(12));
+    $body = '';
+    foreach ($fields as $name => $value) {
+        $body .= '--' . $boundary . "\r\nContent-Disposition: form-data; name=\"" . $name . "\"\r\n\r\n" . $value . "\r\n";
+    }
+    $body .= '--' . $boundary . "\r\nContent-Disposition: form-data; name=\"image\"; filename=\"" . addslashes($fileName) . "\"\r\nContent-Type: " . $mime . "\r\n\r\n" . $fileContent . "\r\n--" . $boundary . "--\r\n";
+    $headers = ['Accept: text/html', 'Content-Type: multipart/form-data; boundary=' . $boundary];
+    if ($cookie !== '') { $headers[] = 'Cookie: ' . $cookie; }
+    $context = stream_context_create(['http' => [
+        'method' => 'POST', 'header' => implode("\r\n", $headers), 'content' => $body,
+        'ignore_errors' => true, 'follow_location' => 0, 'timeout' => 8,
+    ]]);
+    $content = file_get_contents($url, false, $context);
+    $responseHeaders = $http_response_header ?? [];
+    preg_match('/\s(\d{3})\s/', $responseHeaders[0] ?? '', $statusMatch);
+
+    return [(int) ($statusMatch[1] ?? 0), is_string($content) ? $content : '', $responseHeaders];
 }
 
 function authorizationHttpCsrf(string $html): string
@@ -78,6 +99,8 @@ function authorizationHttpTotp(string $secret, ?int $counter = null): string
 }
 
 $databasePath = sys_get_temp_dir() . '/moves-code-auth-http-' . bin2hex(random_bytes(8)) . '.sqlite';
+$mediaRoot = sys_get_temp_dir() . '/moves-code-media-http-' . bin2hex(random_bytes(8));
+mkdir($mediaRoot, 0700);
 $database = new PDO('sqlite:' . $databasePath, null, null, [PDO::ATTR_ERRMODE => PDO::ERRMODE_EXCEPTION]);
 $database->exec("CREATE TABLE users (
     id INTEGER PRIMARY KEY AUTOINCREMENT,
@@ -104,6 +127,10 @@ $database->exec('CREATE TABLE user_recovery_codes (id INTEGER PRIMARY KEY AUTOIN
 $database->exec('CREATE TABLE pages (id INTEGER PRIMARY KEY AUTOINCREMENT, title VARCHAR(200) NOT NULL, slug VARCHAR(200) NOT NULL UNIQUE, content TEXT NOT NULL, status VARCHAR(16) NOT NULL DEFAULT \'draft\', author_id INTEGER NOT NULL, published_at DATETIME NULL, created_at DATETIME DEFAULT CURRENT_TIMESTAMP, updated_at DATETIME DEFAULT CURRENT_TIMESTAMP)');
 $database->exec('CREATE TABLE article_categories (id INTEGER PRIMARY KEY AUTOINCREMENT, name VARCHAR(120) NOT NULL, slug VARCHAR(140) NOT NULL UNIQUE, description VARCHAR(500) NULL, created_at DATETIME DEFAULT CURRENT_TIMESTAMP, updated_at DATETIME DEFAULT CURRENT_TIMESTAMP)');
 $database->exec('CREATE TABLE articles (id INTEGER PRIMARY KEY AUTOINCREMENT, title VARCHAR(200) NOT NULL, slug VARCHAR(200) NOT NULL UNIQUE, excerpt VARCHAR(500) NOT NULL, content TEXT NOT NULL, cover_image VARCHAR(500) NULL, author_id INTEGER NOT NULL, category_id INTEGER NOT NULL, status VARCHAR(16) NOT NULL DEFAULT \'draft\', published_at DATETIME NULL, created_at DATETIME DEFAULT CURRENT_TIMESTAMP, updated_at DATETIME DEFAULT CURRENT_TIMESTAMP)');
+$database->exec('CREATE TABLE media (id INTEGER PRIMARY KEY AUTOINCREMENT, original_name VARCHAR(255) NOT NULL, stored_name VARCHAR(255) NOT NULL, storage_path VARCHAR(500) NOT NULL UNIQUE, mime_type VARCHAR(100) NOT NULL, file_size INTEGER NOT NULL, title VARCHAR(200) NOT NULL, alt_text VARCHAR(300) NOT NULL DEFAULT \'\', uploaded_by INTEGER NOT NULL, created_at TEXT DEFAULT CURRENT_TIMESTAMP, updated_at TEXT DEFAULT CURRENT_TIMESTAMP)');
+$database->exec('CREATE TABLE slides (id INTEGER PRIMARY KEY AUTOINCREMENT, title TEXT NOT NULL, subtitle TEXT NOT NULL DEFAULT \'\', image_media_id INTEGER NULL REFERENCES media(id) ON DELETE RESTRICT, button_text TEXT NOT NULL DEFAULT \'\', button_url TEXT NOT NULL DEFAULT \'\', sort_order INTEGER NOT NULL DEFAULT 0, status TEXT NOT NULL DEFAULT \'inactive\', published_at TEXT NULL, created_at TEXT DEFAULT CURRENT_TIMESTAMP, updated_at TEXT DEFAULT CURRENT_TIMESTAMP)');
+$database->exec('CREATE TABLE testimonials (id INTEGER PRIMARY KEY AUTOINCREMENT, name TEXT NOT NULL, identification TEXT NOT NULL DEFAULT \'\', company TEXT NOT NULL DEFAULT \'\', testimonial TEXT NOT NULL, photo_media_id INTEGER NULL REFERENCES media(id) ON DELETE RESTRICT, sort_order INTEGER NOT NULL DEFAULT 0, status TEXT NOT NULL DEFAULT \'draft\', published_at TEXT NULL, created_at TEXT DEFAULT CURRENT_TIMESTAMP, updated_at TEXT DEFAULT CURRENT_TIMESTAMP)');
+$database->exec('CREATE TABLE faqs (id INTEGER PRIMARY KEY AUTOINCREMENT, question TEXT NOT NULL, answer TEXT NOT NULL, category TEXT NOT NULL DEFAULT \'\', sort_order INTEGER NOT NULL DEFAULT 0, status TEXT NOT NULL DEFAULT \'inactive\', created_at TEXT DEFAULT CURRENT_TIMESTAMP, updated_at TEXT DEFAULT CURRENT_TIMESTAMP)');
 $insert = $database->prepare('INSERT INTO users (name, email, password, status, role) VALUES (?, ?, ?, ?, ?)');
 $insert->execute(['HTTP Admin Fixture', 'http-admin@example.test', password_hash('test-password-admin', PASSWORD_DEFAULT), 'active', 'admin']);
 $insert->execute(['HTTP User Fixture', 'http-user@example.test', password_hash('test-password-user', PASSWORD_DEFAULT), 'active', 'user']);
@@ -127,6 +154,8 @@ putenv('APP_URL=' . $baseUrl);
 putenv('MOVES_DB_DSN=sqlite:' . $databasePath);
 putenv('MOVES_DB_USER=');
 putenv('MOVES_DB_PASSWORD=');
+putenv('MOVES_MEDIA_STORAGE_PATH=' . $mediaRoot);
+putenv('MOVES_MEDIA_MAX_FILE_SIZE=4096');
 $testKey = base64_encode(random_bytes(32));
 putenv('MOVES_2FA_ENCRYPTION_KEY=' . $testKey);
 $testTotpSecret = (new \Moves\Support\Totp())->generateSecret();
@@ -361,13 +390,172 @@ try {
     assertAuthorizationHttpTest($status === 404, 'CMS asset allowlist permitted an unapproved path.');
     foreach ([
         '/admin/reports' => 'Relatórios', '/admin/notifications' => 'Notificações', '/admin/proposals' => 'Propostas',
-        '/admin/media' => 'Mídia',
-        '/admin/slides' => 'Destaques', '/admin/testimonials' => 'Depoimentos', '/admin/faqs' => 'FAQ',
         '/admin/settings' => 'Configurações', '/admin/versions' => 'Versões', '/admin/system-logs' => 'Log',
     ] as $path => $label) {
         [$status, $modulePage] = authorizationHttpRequest($baseUrl . $path, 'GET', $adminCookie);
         assertAuthorizationHttpTest($status === 200 && str_contains($modulePage, 'Funcionalidade pendente') && str_contains($modulePage, $label), 'CMS menu route did not render its honest placeholder: ' . $path);
     }
+    [$status, $mediaPage] = authorizationHttpRequest($baseUrl . '/admin/media', 'GET', $adminCookie);
+    assertAuthorizationHttpTest($status === 200 && str_contains($mediaPage, 'Biblioteca de mídia') && str_contains($mediaPage, 'Enviar imagem') && !str_contains($mediaPage, 'Funcionalidade pendente'), 'Media library did not render its management screen (HTTP ' . $status . ': ' . substr($mediaPage, 0, 240) . ').');
+    assertAuthorizationHttpTest(str_contains($mediaPage, 'cms-default.min.css') && str_contains($mediaPage, 'cms-default.min.js'), 'Media library did not load CMS assets.');
+    [$status, $pickerPage] = authorizationHttpRequest($baseUrl . '/admin/media/picker', 'GET', $adminCookie);
+    assertAuthorizationHttpTest($status === 200 && str_contains($pickerPage, 'Selecionar imagem'), 'Reusable media picker did not render.');
+    $mediaCsrf = authorizationHttpCsrf($mediaPage);
+    $smallImage = imagecreatetruecolor(24, 24);
+    $color = imagecolorallocate($smallImage, 40, 120, 80);
+    imagefill($smallImage, 0, 0, $color);
+    ob_start(); imagepng($smallImage); $validPng = (string) ob_get_clean(); unset($smallImage);
+    [$status] = authorizationHttpMultipart($baseUrl . '/admin/media', $adminCookie, [
+        '_token' => $mediaCsrf, 'title' => 'Imagem HTTP fixture', 'alt_text' => 'Imagem de teste isolado',
+    ], 'valid.png', 'image/png', $validPng);
+    assertAuthorizationHttpTest($status === 303, 'Authorized PNG upload failed with HTTP ' . $status . '.');
+    $database = new PDO('sqlite:' . $databasePath);
+    $mediaRow = $database->query("SELECT * FROM media WHERE title='Imagem HTTP fixture'")->fetch(PDO::FETCH_ASSOC);
+    assertAuthorizationHttpTest(is_array($mediaRow) && $mediaRow['mime_type'] === 'image/png' && (int) $mediaRow['file_size'] > 0, 'Media metadata was not persisted accurately.');
+    assertAuthorizationHttpTest(preg_match('~^moves-media/\d{4}/\d{2}/[a-z0-9-]+\.png$~D', $mediaRow['storage_path']) === 1, 'Stored media path did not use a generated, contained name.');
+    unset($database);
+    $mediaId = (int) $mediaRow['id'];
+    $storedMediaPath = $mediaRoot . '/' . $mediaRow['storage_path'];
+    assertAuthorizationHttpTest(is_file($storedMediaPath), 'Uploaded image was not stored outside the public directory.');
+    [$status, $servedImage, , , $servedHeaders] = authorizationHttpRequest($baseUrl . '/admin/media/' . $mediaId . '/file', 'GET', $adminCookie);
+    assertAuthorizationHttpTest($status === 200 && $servedImage === $validPng, 'Protected media file delivery failed.');
+    $joinedHeaders = strtolower(implode("\n", $servedHeaders));
+    assertAuthorizationHttpTest(str_contains($joinedHeaders, 'content-type: image/png') && str_contains($joinedHeaders, 'x-content-type-options: nosniff') && str_contains($joinedHeaders, 'cross-origin-resource-policy: same-origin') && str_contains($joinedHeaders, 'cache-control: private, no-store'), 'Protected media response security headers were incomplete.');
+    [$status] = authorizationHttpMultipart($baseUrl . '/admin/media', $adminCookie, ['_token' => 'invalid', 'title' => '', 'alt_text' => ''], 'csrf.png', 'image/png', $validPng);
+    assertAuthorizationHttpTest($status === 403, 'Media upload accepted an invalid CSRF token.');
+    [$status] = authorizationHttpMultipart($baseUrl . '/admin/media', $adminCookie, ['_token' => $mediaCsrf], 'invalid.png', 'image/png', 'not an image');
+    assertAuthorizationHttpTest($status === 422, 'A non-image with an image filename passed MIME validation.');
+    [$status] = authorizationHttpMultipart($baseUrl . '/admin/media', $adminCookie, ['_token' => $mediaCsrf], 'mismatch.jpg', 'image/jpeg', $validPng);
+    assertAuthorizationHttpTest($status === 422, 'An image with an incompatible extension was accepted.');
+    [$status] = authorizationHttpMultipart($baseUrl . '/admin/media', $adminCookie, ['_token' => $mediaCsrf], 'executable.php', 'image/png', $validPng);
+    assertAuthorizationHttpTest($status === 422, 'An image with an executable extension was accepted.');
+    $noisyImage = imagecreatetruecolor(128, 128);
+    for ($y = 0; $y < 128; $y++) { for ($x = 0; $x < 128; $x++) { $pixel = imagecolorallocate($noisyImage, random_int(0, 255), random_int(0, 255), random_int(0, 255)); imagesetpixel($noisyImage, $x, $y, $pixel); } }
+    ob_start(); imagepng($noisyImage); $largePng = (string) ob_get_clean(); unset($noisyImage);
+    assertAuthorizationHttpTest(strlen($largePng) > 4096, 'Oversize fixture did not exceed configured test limit.');
+    [$status] = authorizationHttpMultipart($baseUrl . '/admin/media', $adminCookie, ['_token' => $mediaCsrf], 'too-large.png', 'image/png', $largePng);
+    assertAuthorizationHttpTest($status === 422, 'Image above configured size limit was accepted.');
+    try { (new \Moves\Support\MediaStorage())->resolve('../etc/passwd'); $traversalRejected = false; } catch (RuntimeException) { $traversalRejected = true; }
+    assertAuthorizationHttpTest($traversalRejected, 'Media storage resolver allowed path traversal.');
+    [$status, $mediaDetail] = authorizationHttpRequest($baseUrl . '/admin/media/' . $mediaId . '/edit', 'GET', $adminCookie);
+    assertAuthorizationHttpTest($status === 200 && str_contains($mediaDetail, 'valid.png') && str_contains($mediaDetail, 'Imagem HTTP fixture'), 'Uploaded media details were unavailable.');
+    $mediaCsrf = authorizationHttpCsrf($mediaDetail);
+    [$status] = authorizationHttpRequest($baseUrl . '/admin/media/' . $mediaId, 'POST', $adminCookie, http_build_query([
+        '_token' => $mediaCsrf, 'title' => 'Título alterado', 'alt_text' => 'Alt alterado',
+    ]));
+    assertAuthorizationHttpTest($status === 303, 'Authorized media description update failed.');
+    $database = new PDO('sqlite:' . $databasePath);
+    $updatedMedia = $database->query('SELECT title, alt_text FROM media WHERE id=' . $mediaId)->fetch(PDO::FETCH_ASSOC);
+    assertAuthorizationHttpTest(is_array($updatedMedia) && $updatedMedia['title'] === 'Título alterado' && $updatedMedia['alt_text'] === 'Alt alterado', 'Media description update was not persisted.');
+    unset($database);
+    [$status] = authorizationHttpRequest($baseUrl . '/admin/media/' . $mediaId . '/delete', 'POST', $adminCookie, http_build_query(['_token' => $mediaCsrf]));
+    assertAuthorizationHttpTest($status === 403, 'Admin without media.delete could delete an image.');
+    [$status, $superadminMediaDetail] = authorizationHttpRequest($baseUrl . '/admin/media/' . $mediaId . '/edit', 'GET', $superadminCookie);
+    assertAuthorizationHttpTest($status === 200, 'Superadmin could not view media details.');
+    $superadminMediaCsrf = authorizationHttpCsrf($superadminMediaDetail);
+    [$status] = authorizationHttpRequest($baseUrl . '/admin/media/' . $mediaId . '/delete', 'POST', $superadminCookie, http_build_query(['_token' => 'invalid']));
+    assertAuthorizationHttpTest($status === 403 && is_file($storedMediaPath), 'Media deletion accepted invalid CSRF or removed the file.');
+    $database = new PDO('sqlite:' . $databasePath);
+    $database->prepare("UPDATE pages SET content=? WHERE slug='pagina-xss-teste'")->execute(['<p><a href="/admin/media/' . $mediaId . '/file">imagem</a></p>']);
+    unset($database);
+    [$status] = authorizationHttpRequest($baseUrl . '/admin/media/' . $mediaId . '/delete', 'POST', $superadminCookie, http_build_query(['_token' => $superadminMediaCsrf]));
+    assertAuthorizationHttpTest($status === 409 && is_file($storedMediaPath), 'Associated media was deleted despite a content reference (HTTP ' . $status . ').');
+
+    [$status, $slidesPage] = authorizationHttpRequest($baseUrl . '/admin/slides', 'GET', $adminCookie);
+    assertAuthorizationHttpTest($status === 200 && str_contains($slidesPage, 'Lista de destaques') && !str_contains($slidesPage, 'Funcionalidade pendente'), 'Slides management screen did not render.');
+    [$status, $slideForm] = authorizationHttpRequest($baseUrl . '/admin/slides/new', 'GET', $adminCookie);
+    assertAuthorizationHttpTest($status === 200, 'Authorized slide form did not render.');
+    $slideCsrf = authorizationHttpCsrf($slideForm);
+    [$status] = authorizationHttpRequest($baseUrl . '/admin/slides', 'POST', $adminCookie, http_build_query([
+        '_token' => $slideCsrf, 'title' => 'Destaque de teste', 'subtitle' => 'Publicação de teste',
+        'image_media_id' => $mediaId, 'button_text' => 'Contato', 'button_url' => '/contato',
+        'sort_order' => 2, 'status' => 'active', 'published_at' => '',
+    ]));
+    assertAuthorizationHttpTest($status === 303, 'Slide CRUD create failed with HTTP ' . $status . '.');
+    $database = new PDO('sqlite:' . $databasePath);
+    $slideId = (int) $database->query("SELECT id FROM slides WHERE title='Destaque de teste'")->fetchColumn();
+    assertAuthorizationHttpTest($slideId > 0, 'Slide was not persisted.');
+    unset($database);
+    [$status, $publicImage, , , $publicImageHeaders] = authorizationHttpRequest($baseUrl . '/media/' . $mediaId, 'GET');
+    assertAuthorizationHttpTest($status === 200 && $publicImage === $validPng && str_contains(strtolower(implode("\n", $publicImageHeaders)), 'cache-control: public'), 'Published slide image was not safely delivered publicly.');
+    [$status] = authorizationHttpRequest($baseUrl . '/admin/slides/' . $slideId, 'POST', $adminCookie, http_build_query([
+        '_token' => $slideCsrf, 'title' => 'Link inválido', 'button_url' => 'javascript:alert(1)', 'status' => 'active',
+        'sort_order' => 0,
+    ]));
+    assertAuthorizationHttpTest($status === 422, 'Slide accepted a javascript: button URL.');
+    [$status, $slideEdit] = authorizationHttpRequest($baseUrl . '/admin/slides/' . $slideId . '/edit', 'GET', $adminCookie);
+    $slideCsrf = authorizationHttpCsrf($slideEdit);
+    [$status] = authorizationHttpRequest($baseUrl . '/admin/slides/' . $slideId, 'POST', $adminCookie, http_build_query([
+        '_token' => $slideCsrf, 'title' => 'Destaque de teste', 'subtitle' => 'Atualizado', 'image_media_id' => $mediaId,
+        'button_text' => 'Contato', 'button_url' => '/contato', 'sort_order' => 1, 'status' => 'inactive', 'published_at' => '',
+    ]));
+    assertAuthorizationHttpTest($status === 303, 'Slide update/status change failed.');
+    [$status] = authorizationHttpRequest($baseUrl . '/media/' . $mediaId, 'GET');
+    assertAuthorizationHttpTest($status === 404, 'Inactive slide image remained publicly available.');
+    [$status, $slideEdit] = authorizationHttpRequest($baseUrl . '/admin/slides/' . $slideId . '/edit', 'GET', $superadminCookie);
+    $slideCsrf = authorizationHttpCsrf($slideEdit);
+    [$status] = authorizationHttpRequest($baseUrl . '/admin/slides/' . $slideId . '/delete', 'POST', $superadminCookie, http_build_query(['_token' => $slideCsrf]));
+    assertAuthorizationHttpTest($status === 303, 'Slide deletion failed.');
+
+    [$status, $testimonialForm] = authorizationHttpRequest($baseUrl . '/admin/testimonials/new', 'GET', $adminCookie);
+    $testimonialCsrf = authorizationHttpCsrf($testimonialForm);
+    [$status] = authorizationHttpRequest($baseUrl . '/admin/testimonials', 'POST', $adminCookie, http_build_query([
+        '_token' => $testimonialCsrf, 'name' => 'Pessoa de teste', 'identification' => 'Cliente', 'company' => 'Moves',
+        'testimonial' => '<p>Ótimo serviço.</p><script>alert(1)</script><img src=x onerror=alert(2)>',
+        'photo_media_id' => $mediaId, 'sort_order' => 4, 'status' => 'published', 'published_at' => '',
+    ]));
+    assertAuthorizationHttpTest($status === 303, 'Testimonial CRUD create failed.');
+    $database = new PDO('sqlite:' . $databasePath);
+    $testimonial = $database->query("SELECT * FROM testimonials WHERE name='Pessoa de teste'")->fetch(PDO::FETCH_ASSOC);
+    assertAuthorizationHttpTest(is_array($testimonial) && !str_contains(strtolower($testimonial['testimonial']), '<script') && !str_contains(strtolower($testimonial['testimonial']), 'onerror'), 'Testimonial HTML was not sanitized.');
+    $testimonialId = (int) $testimonial['id'];
+    unset($database);
+    [$status] = authorizationHttpRequest($baseUrl . '/admin/media/' . $mediaId . '/delete', 'POST', $superadminCookie, http_build_query(['_token' => $superadminMediaCsrf]));
+    assertAuthorizationHttpTest($status === 409, 'Referenced testimonial photo could be deleted.');
+    [$status, $testimonialEdit] = authorizationHttpRequest($baseUrl . '/admin/testimonials/' . $testimonialId . '/edit', 'GET', $superadminCookie);
+    $testimonialCsrf = authorizationHttpCsrf($testimonialEdit);
+    [$status] = authorizationHttpRequest($baseUrl . '/admin/testimonials/' . $testimonialId . '/delete', 'POST', $superadminCookie, http_build_query(['_token' => $testimonialCsrf]));
+    assertAuthorizationHttpTest($status === 303, 'Testimonial deletion failed.');
+
+    [$status, $faqForm] = authorizationHttpRequest($baseUrl . '/admin/faqs/new', 'GET', $adminCookie);
+    assertAuthorizationHttpTest($status === 200, 'Authorized FAQ form did not render.');
+    $faqCsrf = authorizationHttpCsrf($faqForm);
+    [$status] = authorizationHttpRequest($baseUrl . '/admin/faqs', 'POST', $adminCookie, http_build_query([
+        '_token' => $faqCsrf, 'question' => 'Como funciona?', 'answer' => '<p>Resposta segura.</p><script>alert(1)</script><a href="javascript:alert(2)">link</a>',
+        'category' => 'Geral', 'sort_order' => 1, 'status' => 'active',
+    ]));
+    assertAuthorizationHttpTest($status === 303, 'FAQ CRUD create failed.');
+    $database = new PDO('sqlite:' . $databasePath);
+    $faqId = (int) $database->query("SELECT id FROM faqs WHERE question='Como funciona?'")->fetchColumn();
+    $faqAnswer = (string) $database->query('SELECT answer FROM faqs WHERE id=' . $faqId)->fetchColumn();
+    assertAuthorizationHttpTest($faqId > 0 && !str_contains(strtolower($faqAnswer), '<script') && !str_contains(strtolower($faqAnswer), 'javascript:'), 'FAQ HTML was not sanitized.');
+    unset($database);
+    [$status, $faqPublic] = authorizationHttpRequest($baseUrl . '/faq', 'GET');
+    preg_match('/<section class="section-shell page-section faq-public".*?<\/section>\s*<\/section>/s', $faqPublic, $faqSectionMatch);
+    $publicFaqMarkup = $faqSectionMatch[0] ?? '';
+    assertAuthorizationHttpTest($status === 200 && str_contains($publicFaqMarkup, 'Como funciona?') && str_contains($publicFaqMarkup, 'Resposta segura.') && !str_contains(strtolower($publicFaqMarkup), '<script'), 'Public FAQ page did not render safe active answers (HTTP ' . $status . ').');
+    [$status] = authorizationHttpRequest($baseUrl . '/admin/faqs', 'POST', $adminCookie, http_build_query(['_token' => 'invalid', 'question' => 'CSRF', 'answer' => 'sem token']));
+    assertAuthorizationHttpTest($status === 403, 'FAQ write accepted invalid CSRF (HTTP ' . $status . ').');
+    [$status, $faqEdit] = authorizationHttpRequest($baseUrl . '/admin/faqs/' . $faqId . '/edit', 'GET', $superadminCookie);
+    $faqCsrf = authorizationHttpCsrf($faqEdit);
+    [$status] = authorizationHttpRequest($baseUrl . '/admin/faqs/' . $faqId, 'POST', $superadminCookie, http_build_query([
+        '_token' => $faqCsrf, 'question' => 'Como funciona?', 'answer' => '<p>Resposta segura.</p>', 'category' => 'Geral', 'sort_order' => 0, 'status' => 'inactive',
+    ]));
+    assertAuthorizationHttpTest($status === 303, 'FAQ update/status change failed.');
+    [$status, $faqPublic] = authorizationHttpRequest($baseUrl . '/faq', 'GET');
+    assertAuthorizationHttpTest($status === 200 && !str_contains($faqPublic, 'Como funciona?'), 'Inactive FAQ remained public.');
+    [$status] = authorizationHttpRequest($baseUrl . '/admin/faqs/' . $faqId . '/delete', 'POST', $superadminCookie, http_build_query(['_token' => $faqCsrf]));
+    assertAuthorizationHttpTest($status === 303, 'FAQ deletion failed.');
+
+    $database = new PDO('sqlite:' . $databasePath);
+    $database->prepare("UPDATE pages SET content='<p>Conteúdo sem referência</p>' WHERE slug='pagina-xss-teste'")->execute();
+    unset($database);
+    [$status] = authorizationHttpRequest($baseUrl . '/admin/media/' . $mediaId . '/delete', 'POST', $superadminCookie, http_build_query(['_token' => $superadminMediaCsrf]));
+    assertAuthorizationHttpTest($status === 303, 'Superadmin could not delete an unreferenced media item.');
+    $database = new PDO('sqlite:' . $databasePath);
+    assertAuthorizationHttpTest((int) $database->query('SELECT COUNT(*) FROM media WHERE id=' . $mediaId)->fetchColumn() === 0, 'Deleted media metadata remained in the database.');
+    unset($database);
+    assertAuthorizationHttpTest(!file_exists($storedMediaPath), 'Deleted media file remained in private storage.');
     foreach (['Dashboard', 'Relatórios', 'Notificações', 'Propostas', 'Páginas', 'Artigos', 'Editor', 'Mídia', 'Destaques', 'Depoimentos', 'FAQ', 'Usuários', 'Configurações', 'Versões', 'Log', 'Visualizar site'] as $menuLabel) {
         assertAuthorizationHttpTest(str_contains($adminPage, $menuLabel), 'CMS navigation is missing menu item: ' . $menuLabel);
     }
@@ -450,12 +638,16 @@ try {
     assertAuthorizationHttpTest($status === 303 && rtrim($location, '/') === $baseUrl, 'Standard user login did not remain outside admin.');
     [$status, , , $location] = authorizationHttpRequest($baseUrl . '/admin', 'GET', $userCookie);
     assertAuthorizationHttpTest($status === 403, 'Standard user was not denied /admin.');
-    foreach (['/admin/reports', '/admin/notifications', '/admin/proposals', '/admin/pages', '/admin/blog', '/admin/media', '/admin/slides', '/admin/testimonials', '/admin/faqs', '/admin/users', '/admin/settings', '/admin/versions', '/admin/system-logs', '/admin/editor'] as $path) {
+    foreach (['/admin/reports', '/admin/notifications', '/admin/proposals', '/admin/pages', '/admin/blog', '/admin/media', '/admin/media/picker', '/admin/slides', '/admin/testimonials', '/admin/faqs', '/admin/users', '/admin/settings', '/admin/versions', '/admin/system-logs', '/admin/editor'] as $path) {
         [$status] = authorizationHttpRequest($baseUrl . $path, 'GET', $userCookie);
         assertAuthorizationHttpTest($status === 403, 'Standard user was not denied CMS route ' . $path . '.');
     }
     [$status] = authorizationHttpRequest($baseUrl . '/cms-assets/wysiwyg/js/app.js', 'GET', $userCookie);
     assertAuthorizationHttpTest($status === 403, 'Standard user was not denied protected CMS assets.');
+    [$status] = authorizationHttpMultipart($baseUrl . '/admin/media', $userCookie, ['_token' => 'invalid'], 'unauthorized.png', 'image/png', $validPng);
+    assertAuthorizationHttpTest($status === 403, 'Standard user could upload media without authorization.');
+    [$status] = authorizationHttpRequest($baseUrl . '/admin/media/' . $mediaId . '/file', 'GET', $userCookie);
+    assertAuthorizationHttpTest($status === 403, 'Standard user could access protected media delivery.');
 
     [$status, $twoFactorPage, $twoFactorCookie] = authorizationHttpRequest($baseUrl . '/login');
     $csrf = authorizationHttpCsrf($twoFactorPage);
@@ -488,4 +680,7 @@ try {
     @unlink($databasePath . '-journal');
     @unlink($databasePath . '-wal');
     @unlink($databasePath . '-shm');
+    $mediaFiles = new RecursiveIteratorIterator(new RecursiveDirectoryIterator($mediaRoot, FilesystemIterator::SKIP_DOTS), RecursiveIteratorIterator::CHILD_FIRST);
+    foreach ($mediaFiles as $mediaFile) { $mediaFile->isDir() ? rmdir($mediaFile->getPathname()) : unlink($mediaFile->getPathname()); }
+    rmdir($mediaRoot);
 }
