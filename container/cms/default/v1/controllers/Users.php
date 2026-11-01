@@ -16,6 +16,8 @@ use chillerlan\QRCode\QROptions;
 use Moves\Core\Controller;
 use Moves\Core\Session;
 use Moves\Models\Auth as AuthService;
+use Moves\Models\CmsReports;
+use Moves\Models\CmsNotifications;
 use Moves\Models\User;
 use Moves\Support\Totp;
 use MovesCode\Model\Connection;
@@ -41,7 +43,9 @@ class Users extends Controller
     {
         if (!$this->guard('admin.access')) { return; }
         $stats = null;
+        $overview = null;
         $statsError = false;
+        $overviewError = false;
         if ($this->auth->can('users.manage')) {
             try {
                 $stats = Connection::get()->query("SELECT COUNT(*) total, SUM(status='active') active, SUM(role='superadmin' AND status='active') superadmins FROM users")->fetch(PDO::FETCH_ASSOC);
@@ -50,9 +54,13 @@ class Users extends Controller
                 $statsError = true;
             }
         }
+        try { $overview = (new CmsReports())->summary(null, null); }
+        catch (Throwable) { $overviewError = true; }
         $this->screen('dashboard', [
             'stats' => $stats,
+            'overview' => $overview,
             'statsError' => $statsError,
+            'overviewError' => $overviewError,
             'system' => [
                 'name' => getenv('APP_NAME') ?: 'Moves Code',
                 'environment' => getenv('APP_ENV') ?: 'local',
@@ -77,7 +85,6 @@ class Users extends Controller
             '/admin/testimonials' => ['Depoimentos', 'CONTEÚDO'],
             '/admin/faqs' => ['FAQ', 'CONTEÚDO'],
             '/admin/settings' => ['Configurações', 'GESTÃO'],
-            '/admin/versions' => ['Versões', 'GESTÃO'],
             '/admin/system-logs' => ['Log', 'GESTÃO'],
         ];
         if (!isset($pages[$path])) { $this->notFound(); return; }
@@ -331,7 +338,8 @@ class Users extends Controller
         http_response_code($status); header('Cache-Control: no-store'); header('Content-Type: text/html; charset=utf-8');
         $actor = $this->auth->user();
         $message = $this->session->flash();
-        $data += ['view' => $view, 'csrf' => $this->session->csrfToken(), 'actor' => $actor?->publicData(), 'canManageRoles' => $this->auth->can('roles.manage'), 'canManageUsers' => $this->auth->can('users.manage'), 'canAccessAdmin' => $this->auth->can('admin.access'), 'permissions' => ['edit' => $this->auth->can('pages.edit'), 'view' => $this->auth->can('media.view'), 'upload' => $this->auth->can('media.upload'), 'delete' => $this->auth->can('media.delete')], 'currentPath' => parse_url((string) ($_SERVER['REQUEST_URI'] ?? '/'), PHP_URL_PATH) ?: '/', 'flash' => $message?->text(), 'errors' => [], 'tab' => 'general', 'record' => null];
+        $data += ['view' => $view, 'csrf' => $this->session->csrfToken(), 'actor' => $actor?->publicData(), 'canManageRoles' => $this->auth->can('roles.manage'), 'canManageUsers' => $this->auth->can('users.manage'), 'canAccessAdmin' => $this->auth->can('admin.access'), 'permissions' => ['edit' => $this->auth->can('pages.edit'), 'view' => $this->auth->can('media.view'), 'upload' => $this->auth->can('media.upload'), 'delete' => $this->auth->can('media.delete'), 'notifications' => ['view' => $this->auth->can('notifications.view')]], 'currentPath' => parse_url((string) ($_SERVER['REQUEST_URI'] ?? '/'), PHP_URL_PATH) ?: '/', 'flash' => $message?->text(), 'errors' => [], 'tab' => 'general', 'record' => null];
+        if ($actor instanceof User && $this->auth->can('notifications.view')) { $data += (new CmsNotifications())->headerContext((int) $actor->id); }
         echo $this->view->render('screen', $data);
     }
 

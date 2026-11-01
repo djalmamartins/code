@@ -119,11 +119,35 @@ class CmsContent
     /** Confirma uso público antes de entregar uma imagem privada da biblioteca. */
     public function isPublicMedia(int $mediaId, string $now): bool
     {
+        try {
+            $logo = Connection::get()->prepare("SELECT 1 FROM cms_settings WHERE setting_key = 'logo_media_id' AND setting_value = :logo LIMIT 1");
+            $logo->execute(['logo' => (string) $mediaId]);
+            if ($logo->fetchColumn() !== false) { return true; }
+        } catch (\Throwable) {
+            // Existing installations remain compatible until the additive settings migration is applied.
+        }
         $statement = Connection::get()->prepare(
             "SELECT EXISTS(SELECT 1 FROM slides WHERE image_media_id = :slide AND status = 'active' AND (published_at IS NULL OR published_at <= :slide_now)) "
-            . "OR EXISTS(SELECT 1 FROM testimonials WHERE photo_media_id = :testimonial AND status = 'published' AND (published_at IS NULL OR published_at <= :testimonial_now))"
+            . "OR EXISTS(SELECT 1 FROM testimonials WHERE photo_media_id = :testimonial AND status = 'published' AND (published_at IS NULL OR published_at <= :testimonial_now)) "
+            . "OR EXISTS(SELECT 1 FROM pages WHERE status = 'published' AND published_at IS NOT NULL AND published_at <= :page_now "
+            . "AND (content LIKE :page_double_quote OR content LIKE :page_single_quote)) "
+            . "OR EXISTS(SELECT 1 FROM articles WHERE status = 'published' AND published_at IS NOT NULL AND published_at <= :article_now "
+            . "AND (cover_image = :article_cover OR content LIKE :article_double_quote OR content LIKE :article_single_quote))"
         );
-        $statement->execute(['slide' => $mediaId, 'slide_now' => $now, 'testimonial' => $mediaId, 'testimonial_now' => $now]);
+        $publicImage = '/media/' . $mediaId;
+        $statement->execute([
+            'slide' => $mediaId,
+            'slide_now' => $now,
+            'testimonial' => $mediaId,
+            'testimonial_now' => $now,
+            'page_now' => $now,
+            'page_double_quote' => '%src="' . $publicImage . '"%',
+            'page_single_quote' => "%src='" . $publicImage . "'%",
+            'article_now' => $now,
+            'article_cover' => $publicImage,
+            'article_double_quote' => '%src="' . $publicImage . '"%',
+            'article_single_quote' => "%src='" . $publicImage . "'%",
+        ]);
 
         return (bool) $statement->fetchColumn();
     }

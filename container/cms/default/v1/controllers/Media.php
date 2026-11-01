@@ -14,6 +14,7 @@ namespace Moves\Themes\Cms\DefaultV1\Controllers;
 use Moves\Core\Controller;
 use Moves\Core\Session;
 use Moves\Models\Auth;
+use Moves\Models\CmsNotifications;
 use Moves\Models\MediaItem;
 use Moves\Models\User;
 use Moves\Support\MediaStorage;
@@ -226,6 +227,7 @@ class Media extends Controller
         header('Content-Type: text/html; charset=utf-8');
         $actor = $this->auth->user();
         $flash = $this->session->flash();
+        if ($actor instanceof User && $this->auth->can('notifications.view')) { $data += (new CmsNotifications())->headerContext((int) $actor->id); }
         echo $this->view->render('screen', $data + [
             'view' => $view, 'csrf' => $this->session->csrfToken(), 'actor' => $actor?->publicData(),
             'permissions' => $this->permissions(),

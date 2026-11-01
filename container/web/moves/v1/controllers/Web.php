@@ -14,6 +14,7 @@ namespace Moves\Themes\Web\MovesV1\Controllers;
 use Moves\Core\Controller;
 use Moves\Models\Page;
 use Moves\Models\CmsContent;
+use Moves\Models\CmsSettings;
 use Moves\Support\HtmlSanitizer;
 use MovesCode\Router\Router;
 use MovesCode\View\Extension\Asset;
@@ -37,6 +38,7 @@ class Web extends Controller
         ));
 
         $this->view->share("currentPath", parse_url($_SERVER["REQUEST_URI"] ?? "/", PHP_URL_PATH) ?: "/");
+        $this->view->share('siteSettings', (new CmsSettings())->publicValues());
     }
 
     /**
@@ -103,7 +105,7 @@ class Web extends Controller
                 $this->publicPageNotFound();
                 return;
             }
-            $page['content'] = (new HtmlSanitizer())->purify((string) $page['content']);
+            $page['content'] = (new HtmlSanitizer())->purifyWithMediaImages((string) $page['content']);
             $description = mb_substr(trim(strip_tags($page['content'])), 0, 160, 'UTF-8');
             $this->render(
                 'pages/page',
@@ -129,9 +131,12 @@ class Web extends Controller
 
     private function render(string $template, string $title, string $description, string $canonical, array $data = []): void
     {
+        $settings = (new CmsSettings())->publicValues();
+        if (($settings['site_name'] ?? '') !== '') { $title = preg_replace('/ — MOVES$/u', ' — ' . $settings['site_name'], $title) ?? $title; }
+        if (($settings['meta_description'] ?? '') !== '') { $description = $settings['meta_description']; }
         $head = $this->seo
-            ->openGraph(APP_NAME, "pt_BR", "website")
-            ->organization("Moves", url(), url("theme-assets/web/moves/v1/images/moves-logo.svg"), $description)
+            ->openGraph($settings['site_name'] ?? APP_NAME, "pt_BR", "website")
+            ->organization($settings['site_name'] ?? "Moves", url(), url("theme-assets/web/moves/v1/images/moves-logo.svg"), $description)
             ->optimize($title, $description, $canonical, url("theme-assets/web/moves/v1/images/hero-notebook.jpg"))
             ->render();
 

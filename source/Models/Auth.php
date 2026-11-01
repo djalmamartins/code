@@ -24,8 +24,8 @@ class Auth
     private const PASSWORD_OPTIONS = ['cost' => 12];
     private const DUMMY_HASH = '$2y$12$Sbie8wlhNn.JF8LF0Y2ySOpHbaRh8VXZQuYE2ohvtibhJLxNHBjHG';
     private const ROLE_PERMISSIONS = [
-        'superadmin' => ['admin.access', 'users.manage', 'roles.manage', 'pages.create', 'pages.edit', 'pages.publish', 'pages.delete', 'articles.create', 'articles.edit', 'articles.publish', 'articles.delete', 'media.view', 'media.upload', 'media.edit', 'media.delete', 'slides.view', 'slides.manage', 'testimonials.view', 'testimonials.manage', 'faqs.view', 'faqs.manage'],
-        'admin' => ['admin.access', 'users.manage', 'pages.create', 'pages.edit', 'pages.publish', 'articles.create', 'articles.edit', 'articles.publish', 'media.view', 'media.upload', 'media.edit', 'slides.view', 'slides.manage', 'testimonials.view', 'testimonials.manage', 'faqs.view', 'faqs.manage'],
+        'superadmin' => ['admin.access', 'users.manage', 'roles.manage', 'pages.create', 'pages.edit', 'pages.publish', 'pages.delete', 'articles.create', 'articles.edit', 'articles.publish', 'articles.delete', 'media.view', 'media.upload', 'media.edit', 'media.delete', 'slides.view', 'slides.manage', 'testimonials.view', 'testimonials.manage', 'faqs.view', 'faqs.manage', 'settings.manage', 'notifications.view', 'reports.view', 'logs.view', 'versions.view', 'versions.publish'],
+        'admin' => ['admin.access', 'users.manage', 'pages.create', 'pages.edit', 'pages.publish', 'articles.create', 'articles.edit', 'articles.publish', 'media.view', 'media.upload', 'media.edit', 'slides.view', 'slides.manage', 'testimonials.view', 'testimonials.manage', 'faqs.view', 'faqs.manage', 'settings.manage', 'notifications.view', 'reports.view', 'logs.view', 'versions.view'],
         'user' => [],
     ];
 
@@ -281,7 +281,7 @@ class Auth
     /** Registra somente o tipo de evento e os identificadores envolvidos. */
     public function recordEvent(?int $actorId, ?int $subjectId, string $event): void
     {
-        $allowed = ['login_success', 'login_rejected', 'two_factor_rejected', 'logout', 'totp_enabled', 'totp_disabled', 'password_changed', 'user_role_changed', 'user_status_changed', 'profile_updated', 'user_created', 'user_updated'];
+        $allowed = ['login_success', 'login_rejected', 'two_factor_rejected', 'logout', 'totp_enabled', 'totp_disabled', 'password_changed', 'user_role_changed', 'user_status_changed', 'profile_updated', 'user_created', 'user_updated', 'cms_settings_updated', 'cms_version_published'];
         if (!in_array($event, $allowed, true)) {
             return;
         }

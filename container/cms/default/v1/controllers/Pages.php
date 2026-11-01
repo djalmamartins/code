@@ -14,7 +14,9 @@ namespace Moves\Themes\Cms\DefaultV1\Controllers;
 use Moves\Core\Controller;
 use Moves\Core\Session;
 use Moves\Models\Auth;
+use Moves\Models\CmsNotifications;
 use Moves\Models\Page;
+use Moves\Models\MediaItem;
 use Moves\Models\User;
 use Moves\Support\HtmlSanitizer;
 use MovesCode\Model\Message;
@@ -124,6 +126,7 @@ class Pages extends Controller
             $page = new Page();
             if ($page->findPage($id) === null) { $this->notFound(); return; }
             $page->setPublished($id, true);
+            $this->notifyAdmins($id, true);
             $this->successFlash('Página publicada.');
             $this->redirect('admin/pages');
         } catch (Throwable) { $this->unavailable(); }
@@ -137,6 +140,7 @@ class Pages extends Controller
             $page = new Page();
             if ($page->findPage($id) === null) { $this->notFound(); return; }
             $page->setPublished($id, false);
+            $this->notifyAdmins($id, false);
             $this->successFlash('Página retirada do site.');
             $this->redirect('admin/pages');
         } catch (Throwable) { $this->unavailable(); }
@@ -152,6 +156,22 @@ class Pages extends Controller
         } catch (Throwable) { $this->unavailable(); }
     }
 
+    private function notifyAdmins(int $id, bool $published): void
+    {
+        try {
+            $actor = $this->auth->user();
+            (new CmsNotifications())->broadcast(
+                'pages:' . ($published ? 'published' : 'unpublished') . ':' . $id . ':' . gmdate('YmdHis'),
+                $published ? 'Página publicada' : 'Página retirada do site',
+                $published ? 'Uma página foi publicada no site.' : 'Uma página foi retirada do site.',
+                '/admin/pages',
+                $actor instanceof User ? (int) $actor->id : null
+            );
+        } catch (Throwable) {
+            // Notification delivery does not roll back a successful content change.
+        }
+    }
+
     private function validatedInput(): array
     {
         $title = trim($this->postString('title'));
@@ -163,7 +183,16 @@ class Pages extends Controller
         if (strlen($slug) > 200 || preg_match('/^[a-z0-9]+(?:-[a-z0-9]+)*$/', $slug) !== 1) { $errors[] = 'Informe um slug com letras minúsculas, números e hífens.'; }
         if (strlen($content) > 1_000_000) { $errors[] = 'O conteúdo excede o limite de 1 MB.'; }
 
-        try { $safeContent = (new HtmlSanitizer())->purify($content); }
+        try {
+            $safeContent = (new HtmlSanitizer())->purifyWithMediaImages($content);
+            preg_match_all('~src="/media/([1-9][0-9]*)"~', $safeContent, $mediaMatches);
+            foreach (array_unique($mediaMatches[1] ?? []) as $mediaId) {
+                if ((new MediaItem())->findMedia((int) $mediaId) === null) {
+                    $errors[] = 'O conteúdo contém uma imagem que não existe na biblioteca.';
+                    break;
+                }
+            }
+        }
         catch (Throwable) { $safeContent = ''; $errors[] = 'A sanitização do conteúdo está indisponível; nada foi salvo.'; }
 
         return [
@@ -201,6 +230,7 @@ class Pages extends Controller
         header('Content-Type: text/html; charset=utf-8');
         $actor = $this->auth->user();
         $flash = $this->session->flash();
+        if ($actor instanceof User && $this->auth->can('notifications.view')) { $data += (new CmsNotifications())->headerContext((int) $actor->id); }
         echo $this->view->render('screen', $data + [
             'view' => $view,
             'csrf' => $this->session->csrfToken(),

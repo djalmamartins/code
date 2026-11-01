@@ -102,7 +102,8 @@ class MediaItem extends Model
     /** Detecta URLs internas de mídia associadas a artigos ou páginas antes da exclusão. */
     public function isReferenced(int $id): bool
     {
-        $pattern = '%/admin/media/' . $id . '/file%';
+        $privatePath = '%/admin/media/' . $id . '/file%';
+        $publicImage = '/media/' . $id;
         $pdo = Connection::get();
         $checks = [];
         $params = [];
@@ -116,9 +117,22 @@ class MediaItem extends Model
             }
             $conditions = [];
             foreach ($columns as $column) {
-                $key = $table . '_' . $column;
-                $conditions[] = $column . ' LIKE :' . $key;
-                $params[$key] = $pattern;
+                if ($column === 'cover_image') {
+                    $privateKey = $table . '_' . $column . '_private';
+                    $publicKey = $table . '_' . $column . '_public';
+                    $conditions[] = '(' . $column . ' LIKE :' . $privateKey . ' OR ' . $column . ' = :' . $publicKey . ')';
+                    $params[$privateKey] = $privatePath;
+                    $params[$publicKey] = $publicImage;
+                    continue;
+                }
+
+                $privateKey = $table . '_' . $column . '_private';
+                $doubleQuoteKey = $table . '_' . $column . '_double_quote';
+                $singleQuoteKey = $table . '_' . $column . '_single_quote';
+                $conditions[] = '(' . $column . ' LIKE :' . $privateKey . ' OR ' . $column . ' LIKE :' . $doubleQuoteKey . ' OR ' . $column . ' LIKE :' . $singleQuoteKey . ')';
+                $params[$privateKey] = $privatePath;
+                $params[$doubleQuoteKey] = '%src="' . $publicImage . '"%';
+                $params[$singleQuoteKey] = "%src='" . $publicImage . "'%";
             }
             $checks[] = 'EXISTS(SELECT 1 FROM ' . $table . ' WHERE ' . implode(' OR ', $conditions) . ')';
         }
